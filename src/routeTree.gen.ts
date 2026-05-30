@@ -9,12 +9,18 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SocialRouteImport } from './routes/social'
 import { Route as ScheduleRouteImport } from './routes/schedule'
 import { Route as ProveRouteImport } from './routes/prove'
 import { Route as ProgressRouteImport } from './routes/progress'
 import { Route as GymRouteImport } from './routes/gym'
 import { Route as IndexRouteImport } from './routes/index'
 
+const SocialRoute = SocialRouteImport.update({
+  id: '/social',
+  path: '/social',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ScheduleRoute = ScheduleRouteImport.update({
   id: '/schedule',
   path: '/schedule',
@@ -47,6 +53,7 @@ export interface FileRoutesByFullPath {
   '/progress': typeof ProgressRoute
   '/prove': typeof ProveRoute
   '/schedule': typeof ScheduleRoute
+  '/social': typeof SocialRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +61,7 @@ export interface FileRoutesByTo {
   '/progress': typeof ProgressRoute
   '/prove': typeof ProveRoute
   '/schedule': typeof ScheduleRoute
+  '/social': typeof SocialRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,13 +70,21 @@ export interface FileRoutesById {
   '/progress': typeof ProgressRoute
   '/prove': typeof ProveRoute
   '/schedule': typeof ScheduleRoute
+  '/social': typeof SocialRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/gym' | '/progress' | '/prove' | '/schedule'
+  fullPaths: '/' | '/gym' | '/progress' | '/prove' | '/schedule' | '/social'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/gym' | '/progress' | '/prove' | '/schedule'
-  id: '__root__' | '/' | '/gym' | '/progress' | '/prove' | '/schedule'
+  to: '/' | '/gym' | '/progress' | '/prove' | '/schedule' | '/social'
+  id:
+    | '__root__'
+    | '/'
+    | '/gym'
+    | '/progress'
+    | '/prove'
+    | '/schedule'
+    | '/social'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -77,10 +93,18 @@ export interface RootRouteChildren {
   ProgressRoute: typeof ProgressRoute
   ProveRoute: typeof ProveRoute
   ScheduleRoute: typeof ScheduleRoute
+  SocialRoute: typeof SocialRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/social': {
+      id: '/social'
+      path: '/social'
+      fullPath: '/social'
+      preLoaderRoute: typeof SocialRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/schedule': {
       id: '/schedule'
       path: '/schedule'
@@ -125,6 +149,7 @@ const rootRouteChildren: RootRouteChildren = {
   ProgressRoute: ProgressRoute,
   ProveRoute: ProveRoute,
   ScheduleRoute: ScheduleRoute,
+  SocialRoute: SocialRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
