@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ScheduleRouteImport } from './routes/schedule'
 import { Route as ProveRouteImport } from './routes/prove'
+import { Route as GymRouteImport } from './routes/gym'
 import { Route as IndexRouteImport } from './routes/index'
 
 const ScheduleRoute = ScheduleRouteImport.update({
@@ -23,6 +24,11 @@ const ProveRoute = ProveRouteImport.update({
   path: '/prove',
   getParentRoute: () => rootRouteImport,
 } as any)
+const GymRoute = GymRouteImport.update({
+  id: '/gym',
+  path: '/gym',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -31,30 +37,34 @@ const IndexRoute = IndexRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/gym': typeof GymRoute
   '/prove': typeof ProveRoute
   '/schedule': typeof ScheduleRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/gym': typeof GymRoute
   '/prove': typeof ProveRoute
   '/schedule': typeof ScheduleRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/gym': typeof GymRoute
   '/prove': typeof ProveRoute
   '/schedule': typeof ScheduleRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/prove' | '/schedule'
+  fullPaths: '/' | '/gym' | '/prove' | '/schedule'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/prove' | '/schedule'
-  id: '__root__' | '/' | '/prove' | '/schedule'
+  to: '/' | '/gym' | '/prove' | '/schedule'
+  id: '__root__' | '/' | '/gym' | '/prove' | '/schedule'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  GymRoute: typeof GymRoute
   ProveRoute: typeof ProveRoute
   ScheduleRoute: typeof ScheduleRoute
 }
@@ -75,6 +85,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProveRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/gym': {
+      id: '/gym'
+      path: '/gym'
+      fullPath: '/gym'
+      preLoaderRoute: typeof GymRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  GymRoute: GymRoute,
   ProveRoute: ProveRoute,
   ScheduleRoute: ScheduleRoute,
 }
