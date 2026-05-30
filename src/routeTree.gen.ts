@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ScheduleRouteImport } from './routes/schedule'
 import { Route as ProveRouteImport } from './routes/prove'
+import { Route as ProgressRouteImport } from './routes/progress'
 import { Route as GymRouteImport } from './routes/gym'
 import { Route as IndexRouteImport } from './routes/index'
 
@@ -22,6 +23,11 @@ const ScheduleRoute = ScheduleRouteImport.update({
 const ProveRoute = ProveRouteImport.update({
   id: '/prove',
   path: '/prove',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProgressRoute = ProgressRouteImport.update({
+  id: '/progress',
+  path: '/progress',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GymRoute = GymRouteImport.update({
@@ -38,12 +44,14 @@ const IndexRoute = IndexRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/gym': typeof GymRoute
+  '/progress': typeof ProgressRoute
   '/prove': typeof ProveRoute
   '/schedule': typeof ScheduleRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/gym': typeof GymRoute
+  '/progress': typeof ProgressRoute
   '/prove': typeof ProveRoute
   '/schedule': typeof ScheduleRoute
 }
@@ -51,20 +59,22 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/gym': typeof GymRoute
+  '/progress': typeof ProgressRoute
   '/prove': typeof ProveRoute
   '/schedule': typeof ScheduleRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/gym' | '/prove' | '/schedule'
+  fullPaths: '/' | '/gym' | '/progress' | '/prove' | '/schedule'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/gym' | '/prove' | '/schedule'
-  id: '__root__' | '/' | '/gym' | '/prove' | '/schedule'
+  to: '/' | '/gym' | '/progress' | '/prove' | '/schedule'
+  id: '__root__' | '/' | '/gym' | '/progress' | '/prove' | '/schedule'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   GymRoute: typeof GymRoute
+  ProgressRoute: typeof ProgressRoute
   ProveRoute: typeof ProveRoute
   ScheduleRoute: typeof ScheduleRoute
 }
@@ -83,6 +93,13 @@ declare module '@tanstack/react-router' {
       path: '/prove'
       fullPath: '/prove'
       preLoaderRoute: typeof ProveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/progress': {
+      id: '/progress'
+      path: '/progress'
+      fullPath: '/progress'
+      preLoaderRoute: typeof ProgressRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/gym': {
@@ -105,6 +122,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   GymRoute: GymRoute,
+  ProgressRoute: ProgressRoute,
   ProveRoute: ProveRoute,
   ScheduleRoute: ScheduleRoute,
 }
