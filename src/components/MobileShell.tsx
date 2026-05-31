@@ -1,5 +1,5 @@
 import { Link, useLocation } from "@tanstack/react-router";
-import { Home, CalendarDays, Dumbbell, Trophy, Users } from "lucide-react";
+import { Home, CalendarDays, Dumbbell, Trophy, User } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
@@ -8,7 +8,7 @@ const tabs = [
   { to: "/schedule", label: "Schedule", icon: CalendarDays },
   { to: "/gym", label: "Gym", icon: Dumbbell },
   { to: "/progress", label: "Progress", icon: Trophy },
-  { to: "/social", label: "Friends", icon: Users },
+  { to: "/account", label: "Account", icon: User },
 ] as const;
 
 const hiddenOn = ["/onboarding", "/prove"];
