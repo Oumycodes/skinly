@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Flame, ChevronRight, Trophy, Sparkles, Bell } from "lucide-react";
-import { IsometricGym } from "@/components/IsometricGym";
+import { Flame, Bell, Menu, Coins } from "lucide-react";
+import { NextEquipment } from "@/components/NextEquipment";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -14,153 +14,73 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const streak = 12;
-  const level = 3;
-  const reputation = 84;
-  const nextUnlock = { name: "Cardio Zone", progress: 62 };
+  const minutesToday = 0;
+  const coins = 300;
+  // Next planned workout determines what gets built
+  const nextWorkout = {
+    title: "Push Day",
+    time: "Today · 6:30 PM",
+    gym: "Sweat Lab",
+    equipment: "powerRack" as const,
+    equipmentLabel: "Power Rack",
+    progress: 0.62, // ring progress (e.g. weekly plan completion)
+  };
 
   return (
-    <div className="flex flex-col gap-6 px-5 pb-6 pt-12">
-      <header className="flex items-center justify-between animate-fade-up">
-        <div>
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Saturday</p>
-          <h1 className="font-display text-2xl font-semibold">Hey, Alex</h1>
+    <div className="flex min-h-[100dvh] flex-col bg-gradient-hero px-5 pb-6 pt-10 text-foreground">
+      {/* Top bar */}
+      <header className="flex items-center justify-between">
+        <button className="grid h-10 w-10 place-items-center rounded-full bg-surface-1/60 backdrop-blur">
+          <Menu className="h-5 w-5" />
+        </button>
+        <div className="flex items-center gap-1.5 rounded-full bg-surface-1/70 px-3 py-1.5 text-sm backdrop-blur">
+          <Flame className="h-4 w-4 text-accent" fill="currentColor" />
+          <span className="font-medium">{streak}</span>
+          <span className="mx-1 text-muted-foreground">·</span>
+          <span className="text-muted-foreground">day streak</span>
         </div>
-        <button className="relative grid h-11 w-11 place-items-center rounded-full border border-border bg-surface-1">
-          <Bell className="h-[18px] w-[18px]" />
-          <span className="absolute right-2.5 top-2.5 h-1.5 w-1.5 rounded-full bg-accent" />
+        <button className="flex items-center gap-1.5 rounded-full bg-surface-1/70 px-3 py-1.5 text-sm backdrop-blur">
+          <Coins className="h-4 w-4 text-accent" />
+          <span className="font-medium">{coins}</span>
         </button>
       </header>
 
-      <div
-        className="animate-fade-up rounded-3xl border border-border bg-gradient-hero p-5 shadow-card"
-        style={{ animationDelay: "60ms" }}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Flame className="h-5 w-5 text-accent" fill="currentColor" />
-            <span className="text-sm font-medium text-muted-foreground">Current streak</span>
-          </div>
-          <span className="text-xs text-muted-foreground">Best: 21d</span>
-        </div>
-        <div className="mt-1 flex items-end gap-2">
-          <span className="font-display text-6xl font-bold leading-none">{streak}</span>
-          <span className="mb-1.5 text-muted-foreground">days</span>
-        </div>
-        <div className="mt-4 flex gap-1.5">
-          {Array.from({ length: 14 }).map((_, i) => (
-            <div
-              key={i}
-              className={`h-7 flex-1 rounded-md ${
-                i < streak
-                  ? "bg-accent shadow-glow"
-                  : i === 12
-                    ? "border border-dashed border-accent/40"
-                    : "bg-surface-2"
-              }`}
-            />
-          ))}
-        </div>
+      {/* Headline */}
+      <p className="mt-8 text-center text-base text-muted-foreground">
+        {minutesToday > 0
+          ? `You've trained for ${minutesToday} mins today.`
+          : "Your next session will build:"}
+      </p>
+      <p className="mt-1 text-center font-display text-2xl font-semibold">
+        {nextWorkout.equipmentLabel}
+      </p>
+
+      {/* Big circular focus */}
+      <div className="relative my-8 flex flex-1 items-center justify-center">
+        <NextEquipment equipment={nextWorkout.equipment} progress={nextWorkout.progress} />
       </div>
 
-      <div
-        className="animate-fade-up overflow-hidden rounded-3xl border border-border bg-surface-1 shadow-card"
-        style={{ animationDelay: "120ms" }}
-      >
-        <IsometricGym level={level} />
-        <div className="flex items-center justify-between p-5">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Your gym</p>
-            <h2 className="font-display text-lg font-semibold">Iron Garage · Lv {level}</h2>
-          </div>
-          <Link
-            to="/gym"
-            className="flex items-center gap-1 rounded-full border border-border px-3 py-1.5 text-xs font-medium hover:border-accent/50"
-          >
-            Visit <ChevronRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
+      {/* Workout pill */}
+      <div className="mx-auto flex items-center gap-2 rounded-full bg-surface-1/70 px-4 py-1.5 text-sm backdrop-blur">
+        <span className="h-2 w-2 rounded-full bg-accent" />
+        <span className="text-muted-foreground">{nextWorkout.time}</span>
+        <span className="text-muted-foreground">·</span>
+        <span className="font-medium">{nextWorkout.title}</span>
       </div>
 
-      <div
-        className="grid grid-cols-2 gap-3 animate-fade-up"
-        style={{ animationDelay: "180ms" }}
-      >
-        <StatCard
-          label="Reputation"
-          value={`${reputation}`}
-          suffix="/100"
-          icon={<Trophy className="h-4 w-4 text-accent" />}
-        />
-        <StatCard
-          label="Next unlock"
-          value={nextUnlock.name}
-          progress={nextUnlock.progress}
-          icon={<Sparkles className="h-4 w-4 text-accent" />}
-        />
-      </div>
-
-      <div
-        className="animate-fade-up rounded-3xl border border-border bg-surface-1 p-5 shadow-card"
-        style={{ animationDelay: "240ms" }}
-      >
-        <div className="flex items-center justify-between">
-          <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Next workout</p>
-          <span className="rounded-full bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-accent">
-            Today · 6:30 PM
-          </span>
-        </div>
-        <h3 className="mt-2 font-display text-xl font-semibold">Push Day · Chest & Triceps</h3>
-        <p className="text-sm text-muted-foreground">Sweat Lab · 1.2 mi away</p>
-
-        <Link
-          to="/prove"
-          className="group mt-4 flex items-center justify-between rounded-2xl bg-gradient-accent p-4 text-accent-foreground shadow-glow"
-        >
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wider opacity-70">Tap to start</p>
-            <p className="font-display text-lg font-bold">PROVE IT</p>
-          </div>
-          <ChevronRight className="h-6 w-6 transition-transform group-hover:translate-x-1" />
-        </Link>
-      </div>
-
+      {/* Prove it button */}
       <Link
-        to="/onboarding"
-        className="mx-auto text-xs text-muted-foreground underline-offset-4 hover:underline"
+        to="/prove"
+        className="mt-6 block rounded-2xl bg-gradient-accent py-4 text-center font-display text-lg font-semibold text-accent-foreground shadow-glow transition-transform active:scale-[0.98]"
       >
-        Replay onboarding
+        Prove it
       </Link>
-    </div>
-  );
-}
 
-function StatCard({
-  label,
-  value,
-  suffix,
-  progress,
-  icon,
-}: {
-  label: string;
-  value: string;
-  suffix?: string;
-  progress?: number;
-  icon?: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-2xl border border-border bg-surface-1 p-4 shadow-card">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        {icon} {label}
+      <div className="mt-3 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+        <Link to="/gym" className="underline-offset-4 hover:underline">Visit gym</Link>
+        <span>·</span>
+        <Link to="/schedule" className="underline-offset-4 hover:underline">Schedule</Link>
       </div>
-      <div className="mt-1 flex items-baseline gap-1">
-        <span className="font-display text-xl font-semibold">{value}</span>
-        {suffix && <span className="text-xs text-muted-foreground">{suffix}</span>}
-      </div>
-      {typeof progress === "number" && (
-        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-3">
-          <div className="h-full bg-gradient-accent" style={{ width: `${progress}%` }} />
-        </div>
-      )}
     </div>
   );
 }
