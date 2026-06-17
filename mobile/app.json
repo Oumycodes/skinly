@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "Skinly",
+    "slug": "skinly",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./src/assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./src/assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FCFBF4"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.skinly.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Skinly needs camera access to scan your skin and track progress.",
+        "NSPhotoLibraryUsageDescription": "Skinly needs photo library access to upload skin photos.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/adaptive-icon.png",
+        "backgroundColor": "#6B8E6B"
+      },
+      "package": "com.skinly.app",
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Skinly to access your camera for skin scans."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "expo-font"
+    ]
+  }
+}
