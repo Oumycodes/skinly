@@ -1,7 +1,10 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { cardChrome } from '../../constants/cards';
 import { colors, radii } from '../../constants/colors';
-import { fonts } from '../../constants/typography';
+import { spacing } from '../../constants/spacing';
+import { type } from '../../constants/typography';
 
 interface RoutinePreviewCardProps {
   period: 'AM' | 'PM';
@@ -21,7 +24,7 @@ export function RoutinePreviewCard({
   return (
     <Pressable style={styles.card} onPress={onPress}>
       <View style={styles.iconWrap}>
-        <Text style={styles.icon}>☑</Text>
+        <Ionicons name="checkmark-circle-outline" size={22} color={colors.accent.blue} />
       </View>
       <View style={styles.content}>
         <Text style={styles.title}>
@@ -42,17 +45,11 @@ export function RoutinePreviewCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
+    ...cardChrome,
     padding: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
+    gap: spacing.item,
   },
   iconWrap: {
     width: 44,
@@ -62,23 +59,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  icon: {
-    fontSize: 18,
-    color: colors.accent.blue,
-  },
   content: {
     flex: 1,
-    gap: 3,
+    gap: spacing.inner,
   },
   title: {
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 15,
-    color: colors.text,
+    ...type.cardTitle,
   },
   preview: {
-    fontFamily: fonts.sans,
-    fontSize: 13,
-    color: colors.textSecondary,
+    ...type.bodySmall,
   },
   badge: {
     backgroundColor: colors.primaryLight,
@@ -90,10 +79,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceMuted,
   },
   badgeText: {
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 11,
+    ...type.statLabel,
     color: colors.primaryDark,
-    letterSpacing: 0.5,
   },
   badgeTextPending: {
     color: colors.textMuted,

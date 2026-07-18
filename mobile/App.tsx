@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AuthGate } from './src/components/AuthGate';
+import { ConnectionStatusBanner } from './src/components/ConnectionStatusBanner';
 import { FontProvider } from './src/components/FontProvider';
 import { colors } from './src/constants/colors';
 import { AuthProvider } from './src/lib/auth/AuthProvider';
@@ -16,6 +17,7 @@ export default function App() {
           <NavigationContainer>
             <StatusBar style="dark" backgroundColor={colors.background} />
             <AuthGate>
+              <ConnectionStatusBanner />
               <RootNavigator />
             </AuthGate>
           </NavigationContainer>

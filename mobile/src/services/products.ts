@@ -1,6 +1,7 @@
 import { apiFetch } from './api';
 
 export type ProductSource = 'photo' | 'barcode' | 'manual';
+export type UsageTime = 'morning' | 'night' | 'both';
 
 export interface ProductSearchResult {
   name: string;
@@ -19,6 +20,10 @@ export interface ShelfProduct {
   ingredients: string[];
   source: ProductSource;
   image_url?: string | null;
+  tracking_enabled?: boolean;
+  trial_days?: number | null;
+  usage_time?: UsageTime | null;
+  times_per_week?: number | null;
   created_at: string;
 }
 
@@ -26,11 +31,24 @@ export interface IngredientConflict {
   products: string[];
   severity: 'mild' | 'moderate' | 'severe';
   message: string;
+  when?: string | null;
 }
 
 export interface ConflictResult {
   conflicts: IngredientConflict[];
   has_conflicts: boolean;
+}
+
+export interface TrackingInsight {
+  product_id: string;
+  status: 'working' | 'on_track' | 'check_this';
+  status_label: string;
+  summary: string;
+  advice?: string | null;
+}
+
+export interface TrackingInsightsResult {
+  insights: TrackingInsight[];
 }
 
 export async function searchProducts(query: string): Promise<ProductSearchResult[]> {
@@ -76,4 +94,8 @@ export async function removeFromShelf(productId: string): Promise<void> {
 
 export async function getConflicts(): Promise<ConflictResult> {
   return apiFetch<ConflictResult>('/products/conflicts');
+}
+
+export async function getTrackingInsights(): Promise<TrackingInsightsResult> {
+  return apiFetch<TrackingInsightsResult>('/products/tracking/insights');
 }

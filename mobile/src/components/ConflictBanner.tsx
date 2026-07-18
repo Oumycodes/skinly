@@ -1,6 +1,8 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import { colors } from '../constants/colors';
+import { colors, radii } from '../constants/colors';
+import { spacing } from '../constants/spacing';
+import { font, type } from '../constants/typography';
 import type { ConflictResult } from '../services/products';
 
 interface ConflictBannerProps {
@@ -17,7 +19,10 @@ export function ConflictBanner({ conflicts }: ConflictBannerProps) {
         <View key={conflict.message} style={styles.item}>
           <Text style={styles.severity}>{conflict.severity.toUpperCase()}</Text>
           <Text style={styles.message}>{conflict.message}</Text>
-          <Text style={styles.products}>{conflict.products.join(' · ')}</Text>
+          <Text style={styles.products}>
+            {conflict.products.join(' · ')}
+            {conflict.when ? ` · ${conflict.when}` : ''}
+          </Text>
         </View>
       ))}
     </View>
@@ -27,34 +32,29 @@ export function ConflictBanner({ conflicts }: ConflictBannerProps) {
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#FFF4E5',
-    borderRadius: 12,
+    borderRadius: radii.sm,
     padding: 14,
     borderWidth: 1,
     borderColor: '#F5D9A8',
-    gap: 10,
+    gap: spacing.item,
   },
   title: {
+    ...font.bold,
     fontSize: 14,
-    fontWeight: '700',
     color: colors.warning,
   },
   item: {
     gap: 2,
   },
   severity: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: colors.textMuted,
-    letterSpacing: 0.5,
+    ...type.statLabel,
   },
   message: {
-    fontSize: 13,
-    lineHeight: 18,
+    ...type.bodySmall,
     color: colors.text,
   },
   products: {
-    fontSize: 12,
-    color: colors.textSecondary,
+    ...type.caption,
     marginTop: 2,
   },
 });

@@ -1,7 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { colors, radii } from '../../constants/colors';
-import { fonts } from '../../constants/typography';
+import { type } from '../../constants/typography';
 
 interface HomeHeaderProps {
   streak?: number;
@@ -11,15 +12,12 @@ export function HomeHeader({ streak = 0 }: HomeHeaderProps) {
   return (
     <View style={styles.container}>
       <View style={styles.brand}>
-        <View style={styles.logoCircle}>
-          <Text style={styles.logoIcon}>🌿</Text>
-        </View>
-        <Text style={styles.logoText}>Skinly</Text>
+        <Text style={styles.logoText}>skins</Text>
       </View>
 
       {streak > 0 && (
         <View style={styles.streak}>
-          <Text style={styles.streakIcon}>🔥</Text>
+          <Ionicons name="flame" size={14} color={colors.streak} />
           <Text style={styles.streakCount}>{streak}</Text>
         </View>
       )}
@@ -36,24 +34,10 @@ const styles = StyleSheet.create({
   brand: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-  },
-  logoCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  logoIcon: {
-    fontSize: 14,
   },
   logoText: {
-    fontFamily: fonts.serif,
-    fontSize: 26,
-    color: colors.text,
-    letterSpacing: -0.5,
+    ...type.screenTitle,
+    fontSize: 24,
   },
   streak: {
     flexDirection: 'row',
@@ -66,12 +50,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  streakIcon: {
-    fontSize: 14,
-  },
   streakCount: {
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 14,
+    ...type.label,
     color: colors.text,
   },
 });

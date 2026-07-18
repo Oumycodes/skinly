@@ -12,8 +12,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SectionLabel } from '../components/ui/SectionLabel';
+import { cardChrome } from '../constants/cards';
 import { colors, radii } from '../constants/colors';
-import { fonts } from '../constants/typography';
+import { layout } from '../constants/layout';
+import { spacing } from '../constants/spacing';
+import { font, type } from '../constants/typography';
 import { useRoutine } from '../hooks/useRoutine';
 import { useShelf } from '../hooks/useShelf';
 import type { Period, RoutineStep } from '../services/routine';
@@ -95,9 +98,9 @@ export function RoutineScreen() {
   }
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
+    <View style={[styles.container, { paddingTop: insets.top + layout.screenPaddingTop }]}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + layout.modalScrollBottom }]}
         showsVerticalScrollIndicator={false}
       >
         <Pressable onPress={() => navigation.goBack()} style={styles.close}>
@@ -163,7 +166,7 @@ export function RoutineScreen() {
         <SectionLabel label="Add from your shelf" />
 
         {loading || shelfLoading ? (
-          <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
+          <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.section }} />
         ) : (
           products.map((product) => {
             const category = guessCategory(product.name, product.ingredients);
@@ -221,12 +224,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingHorizontal: 20,
-    gap: 14,
+    ...layout.content,
   },
   close: {
     alignSelf: 'flex-end',
-    padding: 4,
+    padding: spacing.inner / 2,
   },
   closeText: {
     fontSize: 20,
@@ -236,14 +238,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: spacing.item,
   },
   title: {
-    fontFamily: fonts.serif,
-    fontSize: 28,
-    color: colors.text,
+    ...type.screenTitle,
     flex: 1,
-    letterSpacing: -0.5,
   },
   autoBuild: {
     flexDirection: 'row',
@@ -251,7 +250,7 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: colors.dark,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: spacing.item,
     borderRadius: radii.full,
   },
   autoBuildIcon: {
@@ -259,7 +258,7 @@ const styles = StyleSheet.create({
     color: colors.surface,
   },
   autoBuildText: {
-    fontFamily: fonts.sansSemiBold,
+    ...font.semibold,
     fontSize: 13,
     color: colors.surface,
   },
@@ -268,15 +267,13 @@ const styles = StyleSheet.create({
   },
   toggle: {
     flexDirection: 'row',
-    backgroundColor: colors.surface,
+    ...cardChrome,
     borderRadius: radii.full,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
+    padding: spacing.inner / 2,
   },
   toggleBtn: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: spacing.titleBelow,
     borderRadius: radii.full,
     alignItems: 'center',
   },
@@ -284,7 +281,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.dark,
   },
   toggleText: {
-    fontFamily: fonts.sansMedium,
+    ...font.medium,
     fontSize: 14,
     color: colors.textSecondary,
   },
@@ -294,7 +291,7 @@ const styles = StyleSheet.create({
   alert: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: spacing.item,
     backgroundColor: colors.accent.peach,
     borderRadius: radii.md,
     padding: 14,
@@ -304,25 +301,21 @@ const styles = StyleSheet.create({
   },
   alertText: {
     flex: 1,
-    fontFamily: fonts.sans,
-    fontSize: 13,
+    ...type.bodySmall,
     color: colors.text,
-    lineHeight: 18,
   },
   stepsSection: {
-    gap: 8,
+    gap: spacing.inner,
   },
   stepRow: {
     flexDirection: 'row',
-    gap: 12,
-    backgroundColor: colors.surface,
+    gap: spacing.item,
+    ...cardChrome,
     borderRadius: radii.sm,
     padding: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   stepOrder: {
-    fontFamily: fonts.sansSemiBold,
+    ...font.semibold,
     fontSize: 14,
     color: colors.primary,
     width: 20,
@@ -332,24 +325,20 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   stepName: {
-    fontFamily: fonts.sansSemiBold,
+    ...type.cardTitle,
     fontSize: 14,
-    color: colors.text,
   },
   stepReason: {
-    fontFamily: fonts.sans,
+    ...type.caption,
     fontSize: 12,
-    color: colors.textSecondary,
   },
   productRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    backgroundColor: colors.surface,
+    gap: spacing.item,
+    ...cardChrome,
     borderRadius: radii.md,
     padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   avatar: {
     width: 40,
@@ -359,7 +348,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: {
-    fontFamily: fonts.sansSemiBold,
+    ...font.semibold,
     fontSize: 15,
     color: colors.text,
   },
@@ -368,15 +357,11 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   category: {
-    fontFamily: fonts.sansMedium,
+    ...type.statLabel,
     fontSize: 10,
-    color: colors.textMuted,
-    letterSpacing: 0.6,
   },
   productName: {
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 15,
-    color: colors.text,
+    ...type.cardTitle,
   },
   addBtn: {
     width: 32,
@@ -401,15 +386,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   empty: {
-    fontFamily: fonts.sans,
-    fontSize: 14,
-    color: colors.textMuted,
+    ...type.bodySmall,
     textAlign: 'center',
-    marginTop: 20,
+    marginTop: spacing.screen,
   },
   error: {
-    fontFamily: fonts.sans,
-    fontSize: 13,
+    ...type.bodySmall,
     color: colors.error,
     textAlign: 'center',
   },
@@ -418,11 +400,9 @@ const styles = StyleSheet.create({
     borderRadius: radii.full,
     paddingVertical: 18,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: spacing.inner,
   },
   saveBtnText: {
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 16,
-    color: colors.surface,
+    ...type.button,
   },
 });

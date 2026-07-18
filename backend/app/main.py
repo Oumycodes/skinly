@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes import dashboard, products, progress, routine, scan
 
-app = FastAPI(title="Skinly API", version="1.0.0")
+app = FastAPI(title="skins API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,

@@ -2,11 +2,11 @@ import json
 import os
 from datetime import datetime, timezone
 
-from openai import OpenAI
-
 from app.models.schemas import Period, RoutineStep, RoutineStatus, ShelfProduct, UserRoutine
-from app.services.product_service import list_shelf_products
+from app.services.llm_client import generate_json, has_gemini_api_key
+from app.services.mock_data import use_mock_ai
 from app.services.dashboard_service import get_latest_scan, list_scans
+from app.services.product_service import list_shelf_products
 from app.services.supabase_service import get_supabase
 
 ROUTINE_ORDER = ["cleanser", "toner", "serum", "moisturizer", "spf", "other"]
@@ -76,8 +76,7 @@ def build_routine(user_id: str, period: Period) -> UserRoutine:
         conditions = ", ".join(c.name for c in latest.conditions)
         scan_context = f"Skin score: {latest.overall_score}. Conditions: {conditions}. Summary: {latest.summary}"
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    if use_mock_ai() or not has_gemini_api_key():
         steps = _fallback_build(period, products)
         status = _routine_status(period, steps)
         return UserRoutine(period=period, steps=steps, status=status)
@@ -106,19 +105,17 @@ Rules:
 - Return JSON: {{"steps": [{{"order": 1, "product_id": "...", "product_name": "...", "brand": "...", "category": "...", "reason": "..."}}]}}
 - Include 2-5 steps max"""
 
-    client = OpenAI(api_key=api_key)
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": "You are a skincare routine expert. Return only valid JSON."},
-            {"role": "user", "content": prompt},
-        ],
-        response_format={"type": "json_object"},
-        max_tokens=1000,
-    )
+    try:
+        data = generate_json(
+            system="You are a skincare routine expert. Return only valid JSON.",
+            user_text=prompt,
+            max_output_tokens=1000,
+        )
+    except Exception:
+        steps = _fallback_build(period, products)
+        status = _routine_status(period, steps)
+        return UserRoutine(period=period, steps=steps, status=status)
 
-    raw = response.choices[0].message.content or "{}"
-    data = json.loads(raw)
     product_map = {p.id: p for p in products}
 
     steps: list[RoutineStep] = []

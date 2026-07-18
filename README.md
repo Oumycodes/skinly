@@ -1,4 +1,4 @@
-# Skinly
+# skins
 
 AI-powered skincare app for iOS and Android. React Native + Expo frontend, FastAPI backend, Supabase for auth/storage/database.
 
@@ -17,7 +17,7 @@ AI-powered skincare app for iOS and Android. React Native + Expo frontend, FastA
 ## Project structure
 
 ```
-skinly/
+skins/
 ├── mobile/          # React Native + Expo
 ├── backend/         # FastAPI (Python 3.11)
 └── supabase/        # Migrations + setup docs
@@ -44,10 +44,20 @@ Fill in:
 
 ```bash
 cd backend
-python3 -m venv .venv && source .venv/bin/activate
+python3.11 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+./start.sh
 ```
+
+Or without activating the venv:
+
+```bash
+cd backend
+.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Do **not** run plain `uvicorn` if conda `(base)` is active — it uses the wrong Python.
 
 ### 4. Mobile
 
@@ -60,13 +70,21 @@ npm start
 
 On a physical device, set `EXPO_PUBLIC_API_URL` to your machine's LAN IP.
 
+#### Google sign-in (onboarding)
+
+1. In Supabase → **Authentication → Providers → Google**, enable Google and add your Google OAuth client IDs.
+2. In Supabase → **Authentication → URL Configuration**, add redirect URL:
+   - `skins://auth/callback`
+   - For Expo Go, also add the `exp://…` URL shown when you start the app (from `Linking.createURL('auth/callback')`).
+3. In Google Cloud Console, add the same redirect URIs to your OAuth client.
+
 ## API endpoints
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | POST | `/scan` | ✅ | Analyze selfie, persist result |
 | GET | `/scan/quota` | ✅ | Free scan usage this month |
-| GET | `/products/search?q=` | — | Open Beauty Facts search |
+| GET | `/products/search?q=` | — | Open Beauty Facts search (UPCItemDB images when available) |
 | GET | `/products/barcode/{code}` | — | Barcode lookup |
 | POST | `/products/identify` | — | Photo → product name (GPT-4o) |
 | GET | `/products/shelf` | ✅ | User's product shelf |

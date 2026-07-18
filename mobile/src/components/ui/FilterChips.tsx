@@ -1,7 +1,9 @@
 import { Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 
+import { cardChrome } from '../../constants/cards';
 import { colors, radii } from '../../constants/colors';
-import { fonts } from '../../constants/typography';
+import { spacing } from '../../constants/spacing';
+import { font } from '../../constants/typography';
 
 export interface FilterOption {
   id: string;
@@ -37,19 +39,17 @@ export function FilterChips({ options, selected, onSelect }: FilterChipsProps) {
 
 const styles = StyleSheet.create({
   row: {
-    gap: 8,
-    paddingRight: 8,
+    gap: spacing.inner,
+    paddingRight: spacing.inner,
   },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: spacing.item,
+    ...cardChrome,
     borderRadius: radii.full,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
   },
   chipActive: {
     backgroundColor: colors.dark,
@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
     color: colors.surface,
   },
   label: {
-    fontFamily: fonts.sansMedium,
+    ...font.medium,
     fontSize: 13,
     color: colors.text,
   },

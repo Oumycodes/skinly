@@ -3,22 +3,27 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { HomeHeader } from '../components/home/HomeHeader';
 import { SectionLabel } from '../components/ui/SectionLabel';
-import { colors, radii } from '../constants/colors';
-import { fonts } from '../constants/typography';
+import { sharedCardStyles } from '../constants/cards';
+import { colors } from '../constants/colors';
+import { layout } from '../constants/layout';
+import { spacing } from '../constants/spacing';
+import { type } from '../constants/typography';
 import { useScanQuota } from '../hooks/useScanQuota';
 import { useDashboard } from '../hooks/useDashboard';
+import { useOnboardingFlow } from '../context/OnboardingProvider';
 import { useAuth } from '../lib/auth/AuthProvider';
 
 export function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuth();
+  const { resetOnboarding } = useOnboardingFlow();
   const { quota } = useScanQuota();
   const { data: dashboard } = useDashboard();
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
+    <View style={[styles.container, { paddingTop: insets.top + layout.screenPaddingTop }]}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + layout.tabScrollBottom }]}
         showsVerticalScrollIndicator={false}
       >
         <HomeHeader streak={dashboard?.streak ?? 0} />
@@ -34,16 +39,22 @@ export function ProfileScreen() {
         <View style={styles.card}>
           <Text style={styles.cardLabel}>Plan</Text>
           <Text style={styles.cardValue}>{quota?.plan === 'pro' ? 'Pro' : 'Free'}</Text>
-          {quota?.plan === 'free' && (
+          {quota?.plan === 'free' && quota.limit > 0 && (
             <Text style={styles.cardHint}>
               {quota.remaining} of {quota.limit} scans remaining
             </Text>
           )}
         </View>
 
-        <Pressable style={styles.signOutWrap} onPress={signOut}>
-          <Text style={styles.signOut}>Sign out</Text>
+        <Pressable style={styles.signOutWrap} onPress={() => void resetOnboarding()}>
+          <Text style={styles.replayOnboarding}>Replay onboarding</Text>
         </Pressable>
+
+        {user ? (
+          <Pressable style={styles.signOutWrap} onPress={signOut}>
+            <Text style={styles.signOut}>Sign out</Text>
+          </Pressable>
+        ) : null}
       </ScrollView>
     </View>
   );
@@ -55,49 +66,35 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingHorizontal: 20,
-    gap: 14,
+    ...layout.content,
   },
   title: {
-    fontFamily: fonts.serif,
-    fontSize: 32,
-    color: colors.text,
-    letterSpacing: -0.5,
-    marginTop: 4,
+    ...type.sectionTitle,
+    marginTop: spacing.inner,
   },
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    padding: 18,
+    ...sharedCardStyles.surfaceCard,
     gap: 4,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   cardLabel: {
-    fontFamily: fonts.sansMedium,
-    fontSize: 11,
-    color: colors.textMuted,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
+    ...type.statLabel,
   },
   cardValue: {
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 16,
-    color: colors.text,
+    ...type.cardTitle,
   },
   cardHint: {
-    fontFamily: fonts.sans,
-    fontSize: 13,
-    color: colors.textSecondary,
+    ...type.bodySmall,
     marginTop: 4,
   },
   signOutWrap: {
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: spacing.titleBelow,
+  },
+  replayOnboarding: {
+    ...type.link,
   },
   signOut: {
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 15,
+    ...type.link,
     color: colors.error,
   },
 });

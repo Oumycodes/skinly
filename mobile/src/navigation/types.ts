@@ -1,4 +1,4 @@
-import type { ScanResult } from '../services/scan';
+import type { ScanImages, ScanResult } from '../services/scan';
 
 export type RootStackParamList = {
   Tabs: undefined;
@@ -15,5 +15,5 @@ export type RootTabParamList = {
 
 export type ScanStackParamList = {
   ScanCamera: undefined;
-  ScanResult: { result: ScanResult };
+  ScanResult: { result: ScanResult; localImages: ScanImages };
 };

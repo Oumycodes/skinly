@@ -2,12 +2,19 @@ import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import Svg, { Defs, Ellipse, Mask, Rect } from 'react-native-svg';
 
 import { colors } from '../constants/colors';
+import type { ScanAngle } from '../utils/skinMeasures';
 
-export function FaceGuideOverlay() {
+interface FaceGuideOverlayProps {
+  angle?: ScanAngle;
+}
+
+export function FaceGuideOverlay({ angle = 'front' }: FaceGuideOverlayProps) {
   const { width, height } = useWindowDimensions();
-  const ovalWidth = width * 0.62;
-  const ovalHeight = height * 0.38;
-  const cx = width / 2;
+
+  const isProfile = angle === 'left' || angle === 'right';
+  const ovalWidth = width * (isProfile ? 0.48 : 0.62);
+  const ovalHeight = height * (isProfile ? 0.42 : 0.38);
+  const cx = width / 2 + (isProfile ? (angle === 'left' ? width * 0.04 : -width * 0.04) : 0);
   const cy = height * 0.36;
 
   return (

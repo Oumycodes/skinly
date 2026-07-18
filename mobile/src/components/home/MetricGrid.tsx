@@ -1,8 +1,10 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { CircularProgress } from '../ui/CircularProgress';
+import { cardChrome } from '../../constants/cards';
 import { colors, radii } from '../../constants/colors';
-import { fonts } from '../../constants/typography';
+import { spacing } from '../../constants/spacing';
+import { type } from '../../constants/typography';
 import type { MetricItem } from '../home/MetricCarousel';
 
 interface MetricGridProps {
@@ -36,36 +38,30 @@ export function MetricGrid({ metrics }: MetricGridProps) {
 const styles = StyleSheet.create({
   grid: {
     flexDirection: 'row',
-    gap: 10,
+    gap: spacing.item,
   },
   card: {
     flex: 1,
-    backgroundColor: colors.surface,
+    ...cardChrome,
     borderRadius: radii.md,
     padding: 14,
     alignItems: 'flex-start',
     minHeight: 150,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
   },
   value: {
-    fontFamily: fonts.serifRegular,
+    ...type.metricScore,
     fontSize: 20,
-    color: colors.text,
+    lineHeight: 24,
   },
   label: {
-    fontFamily: fonts.sans,
+    ...type.bodySmall,
     fontSize: 12,
-    color: colors.textSecondary,
     marginTop: 2,
   },
   ring: {
     marginTop: 'auto',
     alignSelf: 'center',
-    paddingTop: 12,
+    paddingTop: spacing.titleBelow,
   },
   icon: {
     fontSize: 14,

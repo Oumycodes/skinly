@@ -1,8 +1,10 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { CircularProgress } from '../ui/CircularProgress';
+import { cardChrome } from '../../constants/cards';
 import { colors, radii } from '../../constants/colors';
-import { fonts } from '../../constants/typography';
+import { spacing } from '../../constants/spacing';
+import { type } from '../../constants/typography';
 
 export interface MetricItem {
   id: string;
@@ -57,30 +59,21 @@ export function MetricCarousel({ metrics }: MetricCarouselProps) {
 
 const styles = StyleSheet.create({
   scroll: {
-    gap: 12,
-    paddingRight: 4,
+    gap: spacing.item,
+    paddingRight: spacing.inner / 2,
   },
   card: {
     width: 120,
-    backgroundColor: colors.surface,
+    ...cardChrome,
     borderRadius: radii.md,
     padding: 16,
     alignItems: 'flex-start',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
   },
   value: {
-    fontFamily: fonts.serifRegular,
-    fontSize: 22,
-    color: colors.text,
+    ...type.metricScore,
   },
   label: {
-    fontFamily: fonts.sans,
-    fontSize: 13,
-    color: colors.textSecondary,
+    ...type.bodySmall,
     marginTop: 2,
   },
   ringWrap: {

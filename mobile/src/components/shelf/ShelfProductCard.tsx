@@ -1,7 +1,9 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { cardChrome } from '../../constants/cards';
 import { colors, radii } from '../../constants/colors';
-import { fonts } from '../../constants/typography';
+import { spacing } from '../../constants/spacing';
+import { font, type } from '../../constants/typography';
 import type { ShelfProduct } from '../../services/products';
 import {
   getCategoryColor,
@@ -56,12 +58,10 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
-    backgroundColor: colors.surface,
+    gap: spacing.item,
+    ...cardChrome,
     borderRadius: radii.md,
     padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
   },
   avatar: {
     width: 44,
@@ -71,7 +71,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: {
-    fontFamily: fonts.sansSemiBold,
+    ...font.semibold,
     fontSize: 16,
     color: colors.text,
   },
@@ -80,15 +80,11 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   brand: {
-    fontFamily: fonts.sansMedium,
-    fontSize: 10,
-    color: colors.textMuted,
+    ...type.statLabel,
     letterSpacing: 0.8,
   },
   name: {
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 15,
-    color: colors.text,
+    ...type.cardTitle,
   },
   tags: {
     flexDirection: 'row',
@@ -98,24 +94,19 @@ const styles = StyleSheet.create({
   },
   tag: {
     backgroundColor: colors.surfaceMuted,
-    paddingHorizontal: 8,
+    paddingHorizontal: spacing.inner,
     paddingVertical: 3,
     borderRadius: radii.full,
   },
   tagText: {
-    fontFamily: fonts.sans,
-    fontSize: 11,
-    color: colors.textSecondary,
+    ...type.caption,
   },
   right: {
     alignItems: 'flex-end',
-    gap: 8,
+    gap: spacing.inner,
   },
   category: {
-    fontFamily: fonts.sansMedium,
-    fontSize: 10,
-    color: colors.textMuted,
-    letterSpacing: 0.6,
+    ...type.statLabel,
   },
   remove: {
     fontSize: 14,

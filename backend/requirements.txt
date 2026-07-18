@@ -7,3 +7,6 @@ pydantic-settings==2.8.1
 supabase==2.15.0
 httpx==0.28.1
 python-dotenv==1.1.0
+pillow==12.3.0
+opencv-python-headless==4.10.0.84
+google-genai>=1.0.0

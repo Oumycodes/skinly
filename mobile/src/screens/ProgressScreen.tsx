@@ -1,9 +1,8 @@
-import * as ImagePicker from 'expo-image-picker';
-import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useState } from 'react';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,113 +10,127 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { dateKey, dateKeyFromIso, DateStrip } from '../components/home/DateStrip';
 import { HomeHeader } from '../components/home/HomeHeader';
-import { ComparisonCard } from '../components/progress/ComparisonCard';
-import { ProgressChartCard } from '../components/progress/ProgressChartCard';
-import { SectionLabel } from '../components/ui/SectionLabel';
-import { colors, radii } from '../constants/colors';
-import { fonts } from '../constants/typography';
-import { useProgress } from '../hooks/useProgress';
-import { submitCheckin } from '../services/progress';
+import { LatestScanPanel } from '../components/scan/LatestScanPanel';
+import { colors } from '../constants/colors';
+import { layout } from '../constants/layout';
+import { spacing } from '../constants/spacing';
+import { type } from '../constants/typography';
+import { useDashboard } from '../hooks/useDashboard';
+import type { RootStackParamList } from '../navigation/types';
+import {
+  dashboardImages,
+  getScanHistoryDetail,
+  scanDetailImages,
+  type ScanDetail,
+} from '../services/dashboard';
+import { withSampleScanScores } from '../utils/sampleProgressScores';
 
 export function ProgressScreen() {
   const insets = useSafeAreaInsets();
-  const { data, loading, refresh } = useProgress();
-  const [checkingIn, setCheckingIn] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { data: dashboard, refresh: refreshDashboard } = useDashboard();
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [history, setHistory] = useState<ScanDetail[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  useFocusEffect(useCallback(() => { refresh(); }, [refresh]));
-
-  async function handleCheckin() {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) {
-      setError('Camera permission is required');
-      return;
-    }
-
-    const result = await ImagePicker.launchCameraAsync({
-      quality: 0.85,
-      allowsEditing: true,
-      cameraType: ImagePicker.CameraType.front,
-    });
-
-    if (result.canceled || !result.assets[0]) return;
-
-    setCheckingIn(true);
-    setError(null);
+  const refresh = useCallback(async () => {
+    setLoading(true);
     try {
-      await submitCheckin(result.assets[0].uri);
-      await refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Check-in failed');
+      const [details] = await Promise.all([
+        getScanHistoryDetail(90),
+        refreshDashboard(),
+      ]);
+      setHistory(details);
+    } catch {
+      setHistory([]);
     } finally {
-      setCheckingIn(false);
+      setLoading(false);
     }
-  }
+  }, [refreshDashboard]);
 
-  const weeksLabel =
-    data && data.weeks_active > 0
-      ? data.weeks_active === 1
-        ? 'One week in.'
-        : `${data.weeks_active} weeks in.`
-      : 'Start tracking';
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh]),
+  );
+
+  const scanScores = useMemo(() => {
+    const scores = new Map<string, number>();
+    // History is newest-first — keep the latest score per calendar day
+    for (const scan of history) {
+      const key = dateKeyFromIso(scan.scanned_at);
+      if (!scores.has(key)) {
+        scores.set(key, scan.overall_score);
+      }
+    }
+    if (dashboard?.skin_score && dashboard.skin_score > 0) {
+      const key = dashboard.latest_scan_at
+        ? dateKeyFromIso(dashboard.latest_scan_at)
+        : dateKey(new Date());
+      if (!scores.has(key)) {
+        scores.set(key, dashboard.skin_score);
+      }
+    }
+    return withSampleScanScores(scores);
+  }, [history, dashboard]);
+
+  const selectedScan = useMemo(() => {
+    const key = dateKey(selectedDate);
+    return history.find((s) => dateKeyFromIso(s.scanned_at) === key) ?? null;
+  }, [history, selectedDate]);
+
+  const todayKey = dateKey(new Date());
+  const isToday = dateKey(selectedDate) === todayKey;
+
+  const displayScan = selectedScan ?? (isToday && dashboard?.skin_score ? {
+    overall_score: dashboard.skin_score,
+    summary: dashboard.latest_scan_summary ?? '',
+    conditions: dashboard.latest_scan_conditions,
+    image_urls: dashboard.latest_scan_image_urls,
+  } : null);
+
+  const imageUrls = selectedScan
+    ? scanDetailImages(selectedScan)
+    : dashboard
+      ? dashboardImages(dashboard)
+      : {};
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
+    <View style={[styles.container, { paddingTop: insets.top + layout.screenPaddingTop }]}>
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 120 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + layout.tabScrollBottom }]}
       >
-        <HomeHeader streak={data?.streak ?? 0} />
+        <HomeHeader streak={dashboard?.streak ?? 0} />
 
-        <SectionLabel label="Progress" />
-        <Text style={styles.title}>{weeksLabel}</Text>
-        {data && data.weeks_active > 0 ? (
-          <Text style={styles.subtitle}>
-            Your skin is{' '}
-            {data.total_change >= 0 ? 'up' : 'down'}{' '}
-            <Text style={styles.bold}>
-              {Math.abs(data.total_change)} points
-            </Text>{' '}
-            since you started.
-          </Text>
+        <DateStrip
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+          scanScores={scanScores}
+        />
+
+        {loading && history.length === 0 ? (
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 40 }} />
+        ) : displayScan ? (
+          <LatestScanPanel
+            score={displayScan.overall_score}
+            summary={displayScan.summary}
+            imageUrls={imageUrls}
+            conditions={displayScan.conditions}
+            variant="detail"
+            onScanPress={() => navigation.navigate('ScanFlow')}
+          />
         ) : (
-          <Text style={styles.subtitle}>
-            Take weekly selfies to track your skin score over time.
-          </Text>
-        )}
-
-        {loading && !data ? (
-          <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
-        ) : (
-          <>
-            <ProgressChartCard
-              score={data?.current_score ?? 0}
-              change={data?.total_change ?? 0}
-              chartPoints={data?.chart_points}
-            />
-
-            {data && data.weeks_active > 0 && (
-              <View style={styles.comparisonRow}>
-                <ComparisonCard score={data.starting_score} variant="before" />
-                <ComparisonCard score={data.current_score} variant="after" />
-              </View>
-            )}
-
-            <Pressable
-              style={[styles.checkinBtn, checkingIn && styles.checkinBtnDisabled]}
-              onPress={handleCheckin}
-              disabled={checkingIn}
-            >
-              {checkingIn ? (
-                <ActivityIndicator color={colors.surface} />
-              ) : (
-                <Text style={styles.checkinText}>📷 Weekly check-in</Text>
-              )}
-            </Pressable>
-
-            {error && <Text style={styles.error}>{error}</Text>}
-          </>
+          <View style={styles.emptyDay}>
+            <Text style={styles.emptyTitle}>No scan this day</Text>
+            <Text style={styles.emptyBody}>
+              {isToday
+                ? 'Take a scan to see your analysis here.'
+                : 'No skin scan was recorded on this date.'}
+            </Text>
+          </View>
         )}
       </ScrollView>
     </View>
@@ -130,49 +143,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   content: {
-    paddingHorizontal: 20,
-    gap: 16,
+    ...layout.content,
   },
-  title: {
-    fontFamily: fonts.serif,
-    fontSize: 32,
-    color: colors.text,
-    letterSpacing: -0.5,
-    marginTop: 4,
-  },
-  subtitle: {
-    fontFamily: fonts.sans,
-    fontSize: 15,
-    lineHeight: 22,
-    color: colors.textSecondary,
-  },
-  bold: {
-    fontFamily: fonts.sansSemiBold,
-    color: colors.text,
-  },
-  comparisonRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  checkinBtn: {
-    backgroundColor: colors.dark,
-    borderRadius: radii.full,
-    paddingVertical: 18,
+  emptyDay: {
     alignItems: 'center',
-    marginTop: 4,
+    gap: spacing.inner,
+    paddingVertical: 48,
+    paddingHorizontal: 24,
   },
-  checkinBtnDisabled: {
-    opacity: 0.7,
+  emptyTitle: {
+    ...type.sectionTitle,
   },
-  checkinText: {
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 16,
-    color: colors.surface,
-  },
-  error: {
-    fontFamily: fonts.sans,
-    fontSize: 13,
-    color: colors.error,
+  emptyBody: {
+    ...type.bodySmall,
     textAlign: 'center',
   },
 });

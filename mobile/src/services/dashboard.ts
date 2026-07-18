@@ -1,5 +1,13 @@
 import { apiFetch } from './api';
 
+import type { ScanAngle, SkinCondition } from './scan';
+
+export interface ScanImageUrls {
+  front: string | null;
+  left: string | null;
+  right: string | null;
+}
+
 export interface DashboardMetric {
   id: string;
   value: string;
@@ -14,8 +22,50 @@ export interface DashboardData {
   streak: number;
   metrics: DashboardMetric[];
   latest_scan_at: string | null;
+  latest_scan_summary: string | null;
+  latest_scan_image_url: string | null;
+  latest_scan_image_urls: ScanImageUrls;
+  latest_scan_conditions: SkinCondition[];
+}
+
+export interface ScanDetail {
+  scan_id: string;
+  overall_score: number;
+  summary: string;
+  conditions: SkinCondition[];
+  scanned_at: string;
+  image_urls: ScanImageUrls;
+}
+
+export function scanDetailImages(detail: ScanDetail): Partial<Record<ScanAngle, string>> {
+  const urls = detail.image_urls;
+  const images: Partial<Record<ScanAngle, string>> = {};
+  if (urls.front) images.front = urls.front;
+  if (urls.left) images.left = urls.left;
+  if (urls.right) images.right = urls.right;
+  return images;
+}
+
+export function dashboardImages(data: DashboardData): Partial<Record<ScanAngle, string>> {
+  const urls = data.latest_scan_image_urls;
+  const images: Partial<Record<ScanAngle, string>> = {};
+  if (urls.front) images.front = urls.front;
+  if (urls.left) images.left = urls.left;
+  if (urls.right) images.right = urls.right;
+  if (!images.front && data.latest_scan_image_url) {
+    images.front = data.latest_scan_image_url;
+  }
+  return images;
 }
 
 export async function getDashboard(): Promise<DashboardData> {
   return apiFetch<DashboardData>('/scan/dashboard');
+}
+
+export async function getScanHistoryDetail(limit = 30): Promise<ScanDetail[]> {
+  return apiFetch<ScanDetail[]>(`/scan/history/detail?limit=${limit}`);
+}
+
+export async function getScanByDate(date: string): Promise<ScanDetail> {
+  return apiFetch<ScanDetail>(`/scan/by-date?date=${date}`);
 }

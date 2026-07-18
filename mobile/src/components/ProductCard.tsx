@@ -1,6 +1,9 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors } from '../constants/colors';
+import { cardChrome } from '../constants/cards';
+import { colors, radii } from '../constants/colors';
+import { spacing } from '../constants/spacing';
+import { font, type } from '../constants/typography';
 import type { ShelfProduct } from '../services/products';
 
 interface ProductCardProps {
@@ -37,30 +40,25 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 14,
+    ...cardChrome,
+    borderRadius: radii.md,
     padding: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 12,
+    gap: spacing.item,
   },
   info: {
     flex: 1,
     gap: 2,
   },
   name: {
+    ...type.cardTitle,
     fontSize: 16,
-    fontWeight: '600',
-    color: colors.text,
   },
   brand: {
-    fontSize: 14,
-    color: colors.textSecondary,
+    ...type.bodySmall,
   },
   meta: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginTop: 4,
+    ...type.caption,
+    marginTop: spacing.inner / 2,
   },
   removeButton: {
     width: 32,
@@ -71,8 +69,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   removeText: {
+    ...font.semibold,
     fontSize: 14,
     color: colors.textMuted,
-    fontWeight: '600',
   },
 });

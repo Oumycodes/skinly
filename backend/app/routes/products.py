@@ -6,6 +6,7 @@ from app.models.schemas import (
     ProductSearchResult,
     ShelfProduct,
     ShelfProductCreate,
+    TrackingInsightsResult,
 )
 from app.services.product_service import (
     check_ingredient_conflicts,
@@ -16,6 +17,7 @@ from app.services.product_service import (
     save_shelf_product,
     search_products,
 )
+from app.services.tracking_service import analyze_shelf_tracking
 
 router = APIRouter()
 
@@ -31,7 +33,7 @@ async def search(q: str, limit: int = 10) -> list[ProductSearchResult]:
 async def barcode_lookup(barcode: str) -> ProductSearchResult:
     product = await lookup_barcode(barcode)
     if not product:
-        raise HTTPException(status_code=404, detail="Product not found in Open Beauty Facts")
+        raise HTTPException(status_code=404, detail="Product not found")
     return product
 
 
@@ -79,3 +81,11 @@ def remove_from_shelf(
 def get_conflicts(user_id: str = Depends(get_current_user_id)) -> ConflictResult:
     products = list_shelf_products(user_id)
     return check_ingredient_conflicts(products)
+
+
+@router.get("/tracking/insights", response_model=TrackingInsightsResult)
+def tracking_insights(user_id: str = Depends(get_current_user_id)) -> TrackingInsightsResult:
+    try:
+        return analyze_shelf_tracking(user_id)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

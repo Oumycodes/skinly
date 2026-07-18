@@ -30,10 +30,18 @@ export async function apiFetch<T>(
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...options,
+      headers,
+    });
+  } catch {
+    throw new ApiError(
+      `Cannot reach API at ${API_BASE_URL}. Restart Expo with: npm run start:clear`,
+      0,
+    );
+  }
 
   if (!response.ok) {
     const body = await response.text();

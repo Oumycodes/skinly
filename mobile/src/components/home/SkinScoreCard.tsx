@@ -1,8 +1,10 @@
 import { StyleSheet, Text, View } from 'react-native';
 
 import { CircularProgress } from '../ui/CircularProgress';
+import { cardChrome } from '../../constants/cards';
 import { colors, radii } from '../../constants/colors';
-import { fonts } from '../../constants/typography';
+import { spacing } from '../../constants/spacing';
+import { font, type } from '../../constants/typography';
 
 interface SkinScoreCardProps {
   score: number;
@@ -44,36 +46,26 @@ export function SkinScoreCard({ score, weeklyChange = 0 }: SkinScoreCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
+    ...cardChrome,
     borderRadius: radii.lg,
-    padding: 24,
+    padding: spacing.section,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
   },
   left: {
     gap: 2,
   },
   score: {
-    fontFamily: fonts.serif,
-    fontSize: 64,
-    lineHeight: 72,
-    color: colors.text,
+    ...type.stat,
     letterSpacing: -1,
   },
   label: {
-    fontFamily: fonts.sans,
-    fontSize: 15,
-    color: colors.textSecondary,
+    ...type.body,
     marginTop: 2,
   },
   change: {
-    fontFamily: fonts.sansMedium,
+    ...font.medium,
     fontSize: 14,
     marginTop: 6,
   },

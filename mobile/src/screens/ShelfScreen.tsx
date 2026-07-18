@@ -1,10 +1,15 @@
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
+  Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,94 +18,156 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { BarcodeScanner } from '../components/BarcodeScanner';
-import { HomeHeader } from '../components/home/HomeHeader';
-import { ConflictAlert } from '../components/shelf/ConflictAlert';
-import { ShelfProductCard } from '../components/shelf/ShelfProductCard';
-import { FilterChips } from '../components/ui/FilterChips';
-import { SectionLabel } from '../components/ui/SectionLabel';
+import { CheckInBanner } from '../components/shelf/CheckInBanner';
+import { ProductTrackingDetailSheet } from '../components/shelf/ProductTrackingDetailSheet';
+import { TrackingProductCard } from '../components/shelf/TrackingProductCard';
+import {
+  TrackProductSheet,
+  type PendingShelfProduct,
+  type TrackAddResult,
+} from '../components/shelf/TrackProductSheet';
+import { cardChrome } from '../constants/cards';
 import { colors, radii } from '../constants/colors';
-import { fonts } from '../constants/typography';
+import { layout } from '../constants/layout';
+import { spacing } from '../constants/spacing';
+import { font, type } from '../constants/typography';
 import { useShelf } from '../hooks/useShelf';
-import { useDashboard } from '../hooks/useDashboard';
-import { identifyProduct, lookupBarcode, searchProducts } from '../services/products';
-import { guessCategory } from '../utils/productCategory';
+import { getScanHistoryDetail, type ScanDetail } from '../services/dashboard';
+import { identifyProduct, searchProducts, getTrackingInsights, type TrackingInsight } from '../services/products';
+import { shortenProductName } from '../utils/productName';
+import {
+  applyTrackingInsights,
+  buildProductTracking,
+  type ProductTracking,
+} from '../utils/productTracking';
 
-const FILTERS = [
-  { id: 'all', label: 'All' },
-  { id: 'cleanser', label: 'Cleanser', icon: '💧' },
-  { id: 'serum', label: 'Serum', icon: '⚗' },
-  { id: 'moisturizer', label: 'Moisturizer', icon: '✦' },
-  { id: 'spf', label: 'SPF', icon: '☀' },
-];
+const DISMISSED_CHECKINS_KEY = '@skins/dismissed_product_checkins';
 
 export function ShelfScreen() {
   const insets = useSafeAreaInsets();
-  const { products, conflicts, loading, error, addProduct, removeProduct, refresh } =
+  const { products, loading, error, addProduct, removeProduct, refresh } =
     useShelf();
-  const { data: dashboard } = useDashboard();
 
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState('all');
+  const [history, setHistory] = useState<ScanDetail[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [pullRefreshing, setPullRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [showAdd, setShowAdd] = useState(false);
-  const [showBarcode, setShowBarcode] = useState(false);
+  const [showUploadChoices, setShowUploadChoices] = useState(false);
+  const [pendingProduct, setPendingProduct] = useState<PendingShelfProduct | null>(null);
+  const [trackStep, setTrackStep] = useState<'usage' | 'ask' | 'duration'>('usage');
   const [adding, setAdding] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [apiResults, setApiResults] = useState<
     Awaited<ReturnType<typeof searchProducts>>
   >([]);
+  const [dismissedCheckIns, setDismissedCheckIns] = useState<Set<string>>(new Set());
+  const [selectedCheckIn, setSelectedCheckIn] = useState<ProductTracking | null>(null);
+  const [trackingInsights, setTrackingInsights] = useState<TrackingInsight[]>([]);
 
-  const filtered = useMemo(() => {
-    return products.filter((p) => {
-      const cat = guessCategory(p.name, p.ingredients);
-      const matchesFilter = filter === 'all' || cat === filter;
-      const q = query.toLowerCase();
-      const matchesQuery =
-        !q ||
-        p.name.toLowerCase().includes(q) ||
-        (p.brand ?? '').toLowerCase().includes(q) ||
-        p.ingredients.some((i) => i.toLowerCase().includes(q));
-      return matchesFilter && matchesQuery;
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      setHistory(await getScanHistoryDetail(90));
+    } catch {
+      setHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  const loadTrackingInsights = useCallback(async () => {
+    try {
+      const result = await getTrackingInsights();
+      setTrackingInsights(result.insights ?? []);
+    } catch {
+      setTrackingInsights([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadHistory();
+    void loadTrackingInsights();
+    void AsyncStorage.getItem(DISMISSED_CHECKINS_KEY).then((raw) => {
+      if (!raw) return;
+      try {
+        setDismissedCheckIns(new Set(JSON.parse(raw) as string[]));
+      } catch {
+        // ignore
+      }
     });
-  }, [products, filter, query]);
+  }, [loadHistory, loadTrackingInsights]);
+
+  const trackingList = useMemo(
+    () =>
+      applyTrackingInsights(
+        products
+          .map((product) => buildProductTracking(product, history))
+          .sort((a, b) => {
+            const aTracked = a.product.tracking_enabled !== false ? 1 : 0;
+            const bTracked = b.product.tracking_enabled !== false ? 1 : 0;
+            if (aTracked !== bTracked) return bTracked - aTracked;
+            return b.day / b.trialDays - a.day / a.trialDays;
+          }),
+        trackingInsights,
+      ),
+    [products, history, trackingInsights],
+  );
+
+  const checkIn = useMemo(() => {
+    return (
+      trackingList.find(
+        (item) =>
+          item.checkInReady &&
+          !dismissedCheckIns.has(`${item.product.id}:${item.trialDays}`),
+      ) ?? null
+    );
+  }, [trackingList, dismissedCheckIns]);
+
+  async function dismissCheckIn(tracking: ProductTracking) {
+    const key = `${tracking.product.id}:${tracking.trialDays}`;
+    const next = new Set(dismissedCheckIns);
+    next.add(key);
+    setDismissedCheckIns(next);
+    await AsyncStorage.setItem(DISMISSED_CHECKINS_KEY, JSON.stringify([...next]));
+  }
+
+  async function handleRefresh() {
+    setPullRefreshing(true);
+    try {
+      await Promise.all([
+        refresh({ silent: true }),
+        loadHistory(),
+        loadTrackingInsights(),
+      ]);
+    } finally {
+      setPullRefreshing(false);
+    }
+  }
 
   async function handleApiSearch() {
-    if (query.trim().length < 2) return;
-    setAdding(true);
+    if (searchQuery.trim().length < 2) return;
+    setSearching(true);
+    setActionError(null);
     try {
-      setApiResults(await searchProducts(query.trim()));
+      setApiResults(await searchProducts(searchQuery.trim()));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Search failed');
     } finally {
-      setAdding(false);
+      setSearching(false);
     }
   }
 
-  async function handleBarcodeScan(barcode: string) {
+  async function identifyAndAdd(photoUri: string) {
     setAdding(true);
     setActionError(null);
     try {
-      await addProduct(await lookupBarcode(barcode), 'barcode');
-      setShowBarcode(false);
-      setShowAdd(false);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Barcode lookup failed');
-    } finally {
-      setAdding(false);
-    }
-  }
-
-  async function handlePhotoPick() {
-    const permission = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permission.granted) return;
-
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true });
-    if (result.canceled || !result.assets[0]) return;
-
-    setAdding(true);
-    try {
-      await addProduct(await identifyProduct(result.assets[0].uri), 'photo');
-      setShowAdd(false);
+      const identified = await identifyProduct(photoUri);
+      beginTrackPrompt(
+        { ...identified, image_url: identified.image_url ?? photoUri },
+        'photo',
+      );
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Photo identification failed');
     } finally {
@@ -108,113 +175,287 @@ export function ShelfScreen() {
     }
   }
 
+  function beginTrackPrompt(
+    product: PendingShelfProduct['product'],
+    source: PendingShelfProduct['source'],
+  ) {
+    setShowAdd(false);
+    setShowUploadChoices(false);
+    setApiResults([]);
+    setSearchQuery('');
+    setTrackStep('usage');
+    setPendingProduct({ product, source });
+  }
+
+  async function handleTakePhoto() {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) return;
+
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true });
+    if (result.canceled || !result.assets[0]) return;
+    await identifyAndAdd(result.assets[0].uri);
+  }
+
+  async function handleUploadFromGallery() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      quality: 0.8,
+      allowsEditing: true,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    await identifyAndAdd(result.assets[0].uri);
+  }
+
+  function handleSelectSearchResult(
+    item: Awaited<ReturnType<typeof searchProducts>>[number],
+  ) {
+    beginTrackPrompt(item, 'manual');
+  }
+
+  async function finishAdd(result: TrackAddResult) {
+    if (!pendingProduct) return;
+    setAdding(true);
+    setActionError(null);
+    try {
+      await addProduct(pendingProduct.product, pendingProduct.source, {
+        trackingEnabled: result.trackingEnabled,
+        trialDays: result.trackingEnabled ? result.trialDays ?? 28 : null,
+        usageTime: result.usageTime,
+        timesPerWeek: result.timesPerWeek,
+      });
+      setPendingProduct(null);
+      setTrackStep('usage');
+      void loadTrackingInsights();
+      void refresh({ silent: true });
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not add product');
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  function closeAddModal() {
+    setShowAdd(false);
+    setShowUploadChoices(false);
+    setSearchQuery('');
+    setApiResults([]);
+    setSearching(false);
+  }
+
+  function closeTrackPrompt() {
+    setPendingProduct(null);
+    setTrackStep('usage');
+  }
+  const isEmpty = !loading && !historyLoading && products.length === 0;
+  const showInitialSpinner = loading && products.length === 0;
+
   return (
-    <View style={[styles.container, { paddingTop: insets.top + 12 }]}>
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id}
-        refreshing={loading}
-        onRefresh={refresh}
-        contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 120 }]}
-        ListHeaderComponent={
-          <View style={styles.headerBlock}>
-            <HomeHeader streak={dashboard?.streak ?? 0} />
-            <SectionLabel label="My shelf" />
-            <Text style={styles.title}>
-              {products.length} product{products.length === 1 ? '' : 's'}
-            </Text>
-            <Text style={styles.subtitle}>
-              Every product you own, scanned for ingredients.
-            </Text>
-
-            <View style={styles.searchRow}>
-              <Text style={styles.searchIcon}>⌕</Text>
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search by name or ingredient"
-                placeholderTextColor={colors.textMuted}
-                value={query}
-                onChangeText={setQuery}
-                onSubmitEditing={handleApiSearch}
-              />
-              <Pressable onPress={() => setShowAdd(true)} hitSlop={8}>
-                <Text style={styles.addLink}>+</Text>
-              </Pressable>
-            </View>
-
-            <FilterChips options={FILTERS} selected={filter} onSelect={setFilter} />
-
-            {conflicts && <ConflictAlert conflicts={conflicts} />}
-            {(error || actionError) && (
-              <Text style={styles.error}>{actionError ?? error}</Text>
-            )}
+    <View style={[styles.container, { paddingTop: insets.top + layout.screenPaddingTop }]}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.list,
+          { paddingBottom: insets.bottom + layout.tabScrollBottom },
+        ]}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={
+          <RefreshControl
+            refreshing={pullRefreshing}
+            onRefresh={() => void handleRefresh()}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        <View style={styles.headerBlock}>
+          <View style={styles.titleRow}>
+            <Text style={styles.title}>Shelf</Text>
+            <Pressable style={styles.addButton} onPress={() => setShowAdd(true)}>
+              <Text style={styles.addButtonText}>+ Add</Text>
+            </Pressable>
           </View>
-        }
-        ListEmptyComponent={
-          loading ? (
-            <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
-          ) : (
-            <Text style={styles.empty}>No products yet. Tap + to add one.</Text>
-          )
-        }
-        renderItem={({ item }) => (
-          <ShelfProductCard product={item} onRemove={removeProduct} />
+
+          {checkIn ? (
+            <CheckInBanner
+              tracking={checkIn}
+              onSeeDetails={() => setSelectedCheckIn(checkIn)}
+              onDismiss={() => void dismissCheckIn(checkIn)}
+            />
+          ) : null}
+
+          {(error || actionError) && (
+            <Text style={styles.error}>{actionError ?? error}</Text>
+          )}
+        </View>
+
+        {showInitialSpinner || historyLoading ? (
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 24 }} />
+        ) : isEmpty ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>Nothing on your shelf yet</Text>
+            <Text style={styles.emptyBody}>
+              Add a product to track how it affects your skin over time.
+            </Text>
+            <Pressable style={styles.emptyBtn} onPress={() => setShowAdd(true)}>
+              <Text style={styles.emptyBtnText}>Add your first product</Text>
+            </Pressable>
+          </View>
+        ) : (
+          trackingList.map((item) => (
+            <TrackingProductCard
+              key={item.product.id}
+              tracking={item}
+              onPress={() => setSelectedCheckIn(item)}
+              onRemove={(id) => void removeProduct(id)}
+            />
+          ))
         )}
+      </ScrollView>
+
+      <ProductTrackingDetailSheet
+        tracking={selectedCheckIn}
+        history={history}
+        onClose={() => setSelectedCheckIn(null)}
       />
 
       <Modal visible={showAdd} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.modal, { paddingBottom: insets.bottom + 20 }]}>
-            <Text style={styles.modalTitle}>Add product</Text>
-            <Pressable style={styles.modalOption} onPress={() => { setShowAdd(false); setShowBarcode(true); }}>
-              <Text style={styles.modalOptionText}>▮▮ Scan barcode</Text>
-            </Pressable>
-            <Pressable style={styles.modalOption} onPress={handlePhotoPick}>
-              <Text style={styles.modalOptionText}>📷 Photo of packaging</Text>
-            </Pressable>
-            <Pressable style={styles.modalOption} onPress={handleApiSearch}>
-              <Text style={styles.modalOptionText}>⌕ Search Open Beauty Facts</Text>
-            </Pressable>
+        <KeyboardAvoidingView
+          style={styles.modalAvoid}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <Pressable
+            style={styles.modalBackdropFlex}
+            onPress={() => {
+              if (showUploadChoices) {
+                setShowUploadChoices(false);
+                return;
+              }
+              closeAddModal();
+            }}
+          />
 
-            {apiResults.length > 0 && (
-              <ScrollView style={styles.apiResults}>
+          {showUploadChoices ? (
+            <Pressable
+              style={styles.uploadDismiss}
+              onPress={() => setShowUploadChoices(false)}
+            />
+          ) : null}
+
+          <View style={styles.modal}>
+            <Text style={styles.modalTitle}>Add product</Text>
+
+            {apiResults.length === 0 && !searching ? (
+              <View style={styles.uploadAnchor}>
+                {showUploadChoices ? (
+                  <View style={styles.uploadPopover}>
+                    <Pressable
+                      style={styles.uploadRow}
+                      onPress={() => {
+                        setShowUploadChoices(false);
+                        setTimeout(() => void handleUploadFromGallery(), 150);
+                      }}
+                    >
+                      <Text style={styles.uploadLabel}>Photo Library</Text>
+                      <Ionicons name="images-outline" size={20} color={colors.text} />
+                    </Pressable>
+                    <View style={styles.uploadDivider} />
+                    <Pressable
+                      style={styles.uploadRow}
+                      onPress={() => {
+                        setShowUploadChoices(false);
+                        setTimeout(() => void handleTakePhoto(), 150);
+                      }}
+                    >
+                      <Text style={styles.uploadLabel}>Take Photo</Text>
+                      <Ionicons name="camera-outline" size={20} color={colors.text} />
+                    </Pressable>
+                  </View>
+                ) : null}
+
+                <Pressable
+                  style={styles.modalOption}
+                  onPress={() => setShowUploadChoices((open) => !open)}
+                >
+                  <Text style={styles.modalOptionText}>Upload</Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <View style={styles.modalSearchRow}>
+              <TextInput
+                style={styles.modalSearchInput}
+                placeholder="Search products"
+                placeholderTextColor={colors.textMuted}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                onSubmitEditing={() => void handleApiSearch()}
+                returnKeyType="search"
+              />
+              <Pressable style={styles.modalSearchBtn} onPress={() => void handleApiSearch()}>
+                <Text style={styles.modalSearchBtnText}>
+                  {searching ? '…' : 'Search'}
+                </Text>
+              </Pressable>
+            </View>
+
+            {searching ? (
+              <ActivityIndicator color={colors.primary} style={{ marginVertical: 8 }} />
+            ) : null}
+
+            {apiResults.length > 0 ? (
+              <ScrollView
+                style={styles.apiResults}
+                contentContainerStyle={styles.apiResultsContent}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
+              >
                 {apiResults.map((item) => (
                   <Pressable
-                    key={`${item.brand}-${item.name}`}
+                    key={`${item.brand}-${item.name}-${item.barcode ?? ''}`}
                     style={styles.apiResult}
-                    onPress={async () => {
-                      setAdding(true);
-                      try {
-                        await addProduct(item, 'manual');
-                        setApiResults([]);
-                        setShowAdd(false);
-                      } finally {
-                        setAdding(false);
-                      }
-                    }}
+                    onPress={() => handleSelectSearchResult(item)}
+                    disabled={adding}
                   >
-                    <Text style={styles.apiName}>{item.name}</Text>
-                    <Text style={styles.apiBrand}>{item.brand}</Text>
+                    {item.image_url ? (
+                      <Image
+                        source={{ uri: item.image_url }}
+                        style={styles.apiThumb}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={[styles.apiThumb, styles.apiThumbEmpty]}>
+                        <Text style={styles.apiThumbPlaceholder}>✦</Text>
+                      </View>
+                    )}
+                    <View style={styles.apiText}>
+                      <Text style={styles.apiName} numberOfLines={2}>
+                        {shortenProductName(item.name, item.brand)}
+                      </Text>
+                      <Text style={styles.apiBrand}>{item.brand}</Text>
+                    </View>
                   </Pressable>
                 ))}
               </ScrollView>
-            )}
+            ) : null}
 
-            <Pressable onPress={() => setShowAdd(false)}>
+            <Pressable onPress={closeAddModal} style={styles.modalCancelBtn}>
               <Text style={styles.modalCancel}>Cancel</Text>
             </Pressable>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
-      <BarcodeScanner
-        visible={showBarcode}
-        onClose={() => setShowBarcode(false)}
-        onScan={handleBarcodeScan}
+      <TrackProductSheet
+        pending={pendingProduct}
+        step={trackStep}
+        onStepChange={setTrackStep}
+        onComplete={(result) => void finishAdd(result)}
+        onClose={closeTrackPrompt}
       />
 
       {adding && (
-        <View style={styles.overlay}>
+        <View style={styles.overlay} pointerEvents="auto">
           <ActivityIndicator color={colors.surface} size="large" />
         </View>
       )}
@@ -228,68 +469,80 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
   },
   list: {
-    paddingHorizontal: 20,
-    gap: 12,
+    paddingHorizontal: spacing.screen,
+    gap: spacing.item,
   },
   headerBlock: {
-    gap: 12,
-    marginBottom: 8,
+    gap: spacing.titleBelow,
+    marginBottom: spacing.inner,
   },
-  title: {
-    fontFamily: fonts.serif,
-    fontSize: 32,
-    color: colors.text,
-    letterSpacing: -0.5,
-  },
-  subtitle: {
-    fontFamily: fonts.sans,
-    fontSize: 14,
-    color: colors.textSecondary,
-    lineHeight: 20,
-  },
-  searchRow: {
+  titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    paddingHorizontal: 14,
-    borderWidth: 1,
+    justifyContent: 'space-between',
+    gap: spacing.item,
+  },
+  title: {
+    ...type.screenTitle,
+  },
+  addButton: {
+    borderWidth: 1.5,
     borderColor: colors.border,
-    gap: 8,
+    borderRadius: radii.pill,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
-  searchIcon: {
-    fontSize: 16,
-    color: colors.textMuted,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: 14,
-    fontFamily: fonts.sans,
-    fontSize: 15,
+  addButtonText: {
+    ...font.semibold,
+    fontSize: 14,
     color: colors.text,
-  },
-  addLink: {
-    fontSize: 22,
-    color: colors.text,
-    fontWeight: '300',
   },
   error: {
-    fontFamily: fonts.sans,
-    fontSize: 13,
+    ...type.bodySmall,
     color: colors.error,
   },
-  empty: {
-    fontFamily: fonts.sans,
+  emptyCard: {
+    ...cardChrome,
+    borderRadius: radii.lg,
+    padding: spacing.screen,
+    gap: spacing.item,
+    marginTop: spacing.item,
+  },
+  emptyTitle: {
+    ...font.semibold,
+    fontSize: 17,
+    color: colors.text,
+  },
+  emptyBody: {
+    ...type.bodySmall,
+  },
+  emptyBtn: {
+    alignSelf: 'flex-start',
+    backgroundColor: colors.fab,
+    borderRadius: radii.pill,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  emptyBtnText: {
+    ...font.semibold,
     fontSize: 14,
-    color: colors.textMuted,
-    textAlign: 'center',
-    marginTop: 32,
+    color: '#FFFFFF',
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 20,
+  },
+  modalAvoid: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  modalBackdropFlex: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   modalBackdrop: {
     flex: 1,
@@ -300,15 +553,17 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderTopLeftRadius: radii.lg,
     borderTopRightRadius: radii.lg,
-    padding: 20,
-    gap: 10,
-    maxHeight: '70%',
+    paddingHorizontal: spacing.screen,
+    paddingTop: spacing.screen,
+    paddingBottom: 8,
+    gap: 8,
+    maxHeight: '92%',
+    overflow: 'visible',
+    zIndex: 50,
   },
   modalTitle: {
-    fontFamily: fonts.serifRegular,
-    fontSize: 22,
-    color: colors.text,
-    marginBottom: 4,
+    ...type.sectionTitle,
+    marginBottom: spacing.inner / 2,
   },
   modalOption: {
     paddingVertical: 14,
@@ -316,31 +571,127 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.borderLight,
   },
   modalOptionText: {
-    fontFamily: fonts.sansMedium,
+    ...font.medium,
     fontSize: 16,
     color: colors.text,
   },
-  apiResults: {
-    maxHeight: 200,
+  uploadAnchor: {
+    position: 'relative',
+    zIndex: 50,
   },
-  apiResult: {
-    paddingVertical: 10,
+  uploadDismiss: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 45,
   },
-  apiName: {
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 14,
+  uploadPopover: {
+    position: 'absolute',
+    left: 0,
+    width: 220,
+    top: '100%',
+    marginTop: 2,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 1,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.38,
+    shadowRadius: 16,
+    elevation: 22,
+    zIndex: 60,
+  },
+  uploadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    minHeight: 42,
+  },
+  uploadDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(0,0,0,0.12)',
+    marginLeft: 14,
+  },
+  uploadLabel: {
+    ...font.medium,
+    fontSize: 16,
     color: colors.text,
   },
+  modalSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.inner,
+    marginTop: spacing.inner,
+  },
+  modalSearchInput: {
+    flex: 1,
+    ...cardChrome,
+    borderRadius: radii.md,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    ...font.regular,
+    fontSize: 15,
+    color: colors.text,
+  },
+  modalSearchBtn: {
+    backgroundColor: colors.dark,
+    borderRadius: radii.pill,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  modalSearchBtnText: {
+    ...font.semibold,
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
+  apiResults: {
+    flexGrow: 1,
+    flexShrink: 1,
+    minHeight: 160,
+    maxHeight: 360,
+  },
+  apiResultsContent: {
+    paddingBottom: 4,
+  },
+  apiResult: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.item,
+    paddingVertical: 10,
+  },
+  apiThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceMuted,
+  },
+  apiThumbEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  apiThumbPlaceholder: {
+    fontSize: 16,
+    color: colors.textMuted,
+  },
+  apiText: {
+    flex: 1,
+    gap: 2,
+  },
+  apiName: {
+    ...type.cardTitle,
+  },
   apiBrand: {
-    fontFamily: fonts.sans,
-    fontSize: 12,
-    color: colors.textSecondary,
+    ...type.caption,
+  },
+  modalCancelBtn: {
+    paddingTop: 4,
+    paddingBottom: 4,
   },
   modalCancel: {
-    fontFamily: fonts.sansMedium,
+    ...font.medium,
     fontSize: 15,
     color: colors.textSecondary,
     textAlign: 'center',
-    paddingVertical: 12,
+    paddingVertical: 8,
   },
 });

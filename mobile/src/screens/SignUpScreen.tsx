@@ -13,7 +13,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radii } from '../constants/colors';
-import { fonts } from '../constants/typography';
+import { spacing } from '../constants/spacing';
+import { font, type } from '../constants/typography';
 import { useAuth } from '../lib/auth/AuthProvider';
 import type { AuthStackParamList } from '../navigation/AuthNavigator';
 
@@ -43,7 +44,7 @@ export function SignUpScreen({ navigation }: Props) {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.container, { paddingTop: insets.top + 40 }]}
+      style={[styles.container, { paddingTop: insets.top + spacing.section + 16 }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <Pressable onPress={() => navigation.goBack()}>
@@ -99,36 +100,32 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-    paddingHorizontal: 28,
+    paddingHorizontal: spacing.screen,
   },
   back: {
-    fontSize: 16,
-    color: colors.primary,
-    fontWeight: '600',
-    marginBottom: 24,
+    ...type.link,
+    marginBottom: spacing.section,
   },
   title: {
-    fontFamily: fonts.serifRegular,
-    fontSize: 28,
-    color: colors.text,
+    ...type.screenTitle,
   },
   subtitle: {
-    fontSize: 15,
-    color: colors.textSecondary,
+    ...type.body,
     marginTop: 6,
     marginBottom: 32,
   },
   form: {
-    gap: 14,
+    gap: spacing.item,
   },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: radii.sm,
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
+    ...font.regular,
     color: colors.text,
   },
   button: {
@@ -136,23 +133,20 @@ const styles = StyleSheet.create({
     borderRadius: radii.sm,
     paddingVertical: 16,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: spacing.inner,
   },
   buttonDisabled: {
     opacity: 0.7,
   },
   buttonText: {
-    color: colors.surface,
-    fontSize: 16,
-    fontWeight: '600',
+    ...type.button,
   },
   error: {
+    ...type.bodySmall,
     color: colors.error,
-    fontSize: 14,
   },
   success: {
+    ...type.bodySmall,
     color: colors.primary,
-    fontSize: 14,
-    lineHeight: 20,
   },
 });

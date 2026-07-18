@@ -1,8 +1,10 @@
 import { StyleSheet, Text, View } from 'react-native';
 import Svg, { Polyline } from 'react-native-svg';
 
+import { cardChrome } from '../../constants/cards';
 import { colors, radii } from '../../constants/colors';
-import { fonts } from '../../constants/typography';
+import { spacing } from '../../constants/spacing';
+import { font, type } from '../../constants/typography';
 import type { ProgressWeekPoint } from '../../services/progress';
 
 interface ProgressChartCardProps {
@@ -14,7 +16,7 @@ interface ProgressChartCardProps {
 export function ProgressChartCard({ score, change, chartPoints = [] }: ProgressChartCardProps) {
   const width = 280;
   const height = 100;
-  const padding = 12;
+  const padding = spacing.titleBelow;
   const chartW = width - padding * 2;
   const chartH = height - padding * 2;
 
@@ -85,41 +87,33 @@ export function ProgressChartCard({ score, change, chartPoints = [] }: ProgressC
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
+    ...cardChrome,
     borderRadius: radii.lg,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 2,
+    padding: spacing.screen,
   },
   top: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
+    marginBottom: spacing.inner,
   },
   score: {
-    fontFamily: fonts.serif,
+    ...type.stat,
     fontSize: 48,
     lineHeight: 54,
-    color: colors.text,
   },
   label: {
-    fontFamily: fonts.sans,
-    fontSize: 13,
-    color: colors.textSecondary,
+    ...type.bodySmall,
     marginTop: 2,
   },
   badge: {
     backgroundColor: colors.primaryLight,
-    paddingHorizontal: 10,
+    paddingHorizontal: spacing.item,
     paddingVertical: 6,
     borderRadius: radii.full,
   },
   badgeText: {
-    fontFamily: fonts.sansSemiBold,
+    ...font.semibold,
     fontSize: 12,
     color: colors.primaryDark,
   },
@@ -129,23 +123,21 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emptyText: {
-    fontFamily: fonts.sans,
-    fontSize: 13,
-    color: colors.textMuted,
+    ...type.bodySmall,
     textAlign: 'center',
   },
   axis: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 4,
+    marginTop: spacing.inner / 2,
   },
   axisLabel: {
-    fontFamily: fonts.sansMedium,
+    ...font.medium,
     fontSize: 11,
     color: colors.textMuted,
   },
   axisNow: {
     color: colors.text,
-    fontFamily: fonts.sansSemiBold,
+    ...font.semibold,
   },
 });

@@ -1,15 +1,17 @@
+import { Ionicons } from '@expo/vector-icons';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, radii } from '../../constants/colors';
-import { fonts } from '../../constants/typography';
+import { spacing } from '../../constants/spacing';
+import { type } from '../../constants/typography';
 
 const TABS = [
-  { name: 'Home', icon: '⌂', label: 'Home', activeBg: colors.tabActive.Home },
-  { name: 'Progress', icon: '↗', label: 'Progress', activeBg: colors.tabActive.Progress },
-  { name: 'Shelf', icon: '✦', label: 'Shelf', activeBg: colors.tabActive.Shelf },
-  { name: 'Profile', icon: '○', label: 'Profile', activeBg: colors.tabActive.Profile },
+  { name: 'Home', icon: 'home-outline' as const, activeIcon: 'home' as const, label: 'Home', activeBg: colors.tabActive.Home },
+  { name: 'Progress', icon: 'trending-up-outline' as const, activeIcon: 'trending-up' as const, label: 'Progress', activeBg: colors.tabActive.Progress },
+  { name: 'Shelf', icon: 'sparkles-outline' as const, activeIcon: 'sparkles' as const, label: 'Shelf', activeBg: colors.tabActive.Shelf },
+  { name: 'Profile', icon: 'person-circle-outline' as const, activeIcon: 'person-circle' as const, label: 'Profile', activeBg: colors.tabActive.Profile },
 ] as const;
 
 export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
@@ -40,7 +42,11 @@ export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
                   focused && { backgroundColor: tab.activeBg },
                 ]}
               >
-                <Text style={[styles.icon, focused && styles.iconActive]}>{tab.icon}</Text>
+                <Ionicons
+                  name={focused ? tab.activeIcon : tab.icon}
+                  size={20}
+                  color={focused ? colors.text : colors.textMuted}
+                />
               </View>
               <Text style={[styles.label, focused && styles.labelActive]}>{tab.label}</Text>
             </Pressable>
@@ -49,7 +55,7 @@ export function CustomTabBar({ state, navigation }: BottomTabBarProps) {
       </View>
 
       <Pressable style={styles.fab} onPress={openScan}>
-        <Text style={styles.fabIcon}>+</Text>
+        <Ionicons name="add" size={28} color={colors.surface} />
       </Pressable>
     </View>
   );
@@ -64,7 +70,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.screen,
     gap: 12,
     pointerEvents: 'box-none',
   },
@@ -76,9 +82,11 @@ const styles = StyleSheet.create({
     borderRadius: radii.pill,
     paddingVertical: 10,
     paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.06,
     shadowRadius: 16,
     elevation: 8,
     maxWidth: 300,
@@ -95,16 +103,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  icon: {
-    fontSize: 18,
-    color: colors.textMuted,
-  },
-  iconActive: {
-    color: colors.text,
-  },
   label: {
-    fontFamily: fonts.sansMedium,
-    fontSize: 10,
+    ...type.caption,
     color: colors.textMuted,
   },
   labelActive: {
@@ -119,14 +119,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.15,
     shadowRadius: 8,
     elevation: 6,
-  },
-  fabIcon: {
-    fontSize: 28,
-    color: colors.surface,
-    lineHeight: 30,
-    fontWeight: '300',
   },
 });

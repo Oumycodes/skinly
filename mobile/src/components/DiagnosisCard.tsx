@@ -1,6 +1,9 @@
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { colors } from '../constants/colors';
+import { sharedCardStyles } from '../constants/cards';
+import { colors, radii } from '../constants/colors';
+import { spacing } from '../constants/spacing';
+import { font, type } from '../constants/typography';
 import type { SkinCondition } from '../services/scan';
 
 interface DiagnosisCardProps {
@@ -48,80 +51,66 @@ export function DiagnosisCard({ condition }: DiagnosisCardProps) {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 12,
+    ...sharedCardStyles.surfaceCard,
+    gap: spacing.item,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: spacing.item,
   },
   conditionName: {
     flex: 1,
+    ...type.sectionTitle,
     fontSize: 18,
-    fontWeight: '700',
-    color: colors.text,
   },
   badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
+    paddingHorizontal: spacing.item,
+    paddingVertical: spacing.inner / 2,
+    borderRadius: radii.full,
   },
   badgeText: {
+    ...font.bold,
     fontSize: 12,
-    fontWeight: '700',
     textTransform: 'capitalize',
   },
   explanation: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: colors.textSecondary,
+    ...type.body,
   },
   recommendations: {
-    marginTop: 4,
-    gap: 10,
+    marginTop: spacing.inner / 2,
+    gap: spacing.item,
   },
   recommendationsTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    ...type.statLabel,
   },
   productRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primaryLight,
-    borderRadius: 12,
+    borderRadius: radii.sm,
     padding: 14,
-    gap: 8,
+    gap: spacing.inner,
   },
   productInfo: {
     flex: 1,
     gap: 2,
   },
   productName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: colors.text,
+    ...type.cardTitle,
   },
   productBrand: {
+    ...type.caption,
     fontSize: 13,
-    color: colors.textMuted,
   },
   productReason: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: 4,
+    ...type.bodySmall,
+    marginTop: spacing.inner / 2,
   },
   productLink: {
+    ...font.semibold,
     fontSize: 18,
     color: colors.primary,
-    fontWeight: '600',
   },
 });

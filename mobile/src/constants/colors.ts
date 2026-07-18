@@ -4,9 +4,9 @@ export const colors = {
   primaryDark: '#4A6F4A',
   primaryRing: '#6B8E6B',
 
-  background: '#FCFBF4',
+  background: '#FFFFFF',
   surface: '#FFFFFF',
-  surfaceMuted: '#F3F1EB',
+  surfaceMuted: '#F5F5F5',
 
   text: '#1C1917',
   textSecondary: '#78716C',
@@ -14,6 +14,7 @@ export const colors = {
 
   border: '#E7E5E0',
   borderLight: '#F0EEE8',
+  borderCard: '#E3E2DE',
 
   dark: '#1C1917',
 
@@ -54,6 +55,7 @@ export const radii = {
   md: 20,
   lg: 24,
   xl: 32,
+  card: 18,
   pill: 40,
   full: 999,
 } as const;

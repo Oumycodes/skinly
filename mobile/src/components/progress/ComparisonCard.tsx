@@ -1,7 +1,9 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { cardChrome } from '../../constants/cards';
 import { colors, radii } from '../../constants/colors';
-import { fonts } from '../../constants/typography';
+import { spacing } from '../../constants/spacing';
+import { type } from '../../constants/typography';
 
 interface ComparisonCardProps {
   score: number;
@@ -24,16 +26,11 @@ export function ComparisonCard({ score, variant }: ComparisonCardProps) {
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    backgroundColor: colors.surface,
+    ...cardChrome,
     borderRadius: radii.lg,
-    padding: 20,
+    padding: spacing.screen,
     alignItems: 'center',
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 1,
+    gap: spacing.item,
   },
   iconWrap: {
     width: 56,
@@ -52,8 +49,8 @@ const styles = StyleSheet.create({
     fontSize: 22,
   },
   score: {
-    fontFamily: fonts.serif,
+    ...type.metricScore,
     fontSize: 36,
-    color: colors.text,
+    lineHeight: 40,
   },
 });
