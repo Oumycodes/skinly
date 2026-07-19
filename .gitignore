@@ -11,6 +11,9 @@ mobile/.env
 mobile/.env.development.local
 *.pem
 
+# Large ML model assets (auto-downloaded on first scan)
+backend/app/services/scan_pipeline/models/
+
 # Expo
 mobile/.expo/
 mobile/dist/

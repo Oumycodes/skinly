@@ -2,6 +2,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import type { RootStackParamList } from '../../navigation/types';
+import type { MetricInsight } from '../../services/dashboard';
 import type { SkinCondition } from '../../services/scan';
 import type { ScanAngle } from '../../utils/skinMeasures';
 import { LatestScanPanel } from '../scan/LatestScanPanel';
@@ -11,6 +12,8 @@ interface FaceAnalysisPanelProps {
   overallScore: number;
   summary: string;
   conditions: SkinCondition[];
+  metricInsights?: MetricInsight[];
+  smoothedScores?: Record<string, number> | null;
   onScanPress?: () => void;
   onZoomChange?: (zoomed: boolean) => void;
 }
@@ -20,6 +23,8 @@ export function FaceAnalysisPanel({
   overallScore,
   summary,
   conditions,
+  metricInsights,
+  smoothedScores,
   onScanPress,
   onZoomChange,
 }: FaceAnalysisPanelProps) {
@@ -31,6 +36,8 @@ export function FaceAnalysisPanel({
       summary={summary}
       imageUrls={imageUrls}
       conditions={conditions}
+      metricInsights={metricInsights}
+      smoothedScores={smoothedScores}
       variant="home"
       onScanPress={onScanPress ?? (() => navigation.navigate('ScanFlow'))}
       onZoomChange={onZoomChange}

@@ -106,6 +106,17 @@ export function MeasureSuggestions({ measure }: MeasureSuggestionsProps) {
     [measure.recommendations],
   );
   const hasProducts = productItems.length > 0;
+  // Habit tip only — never re-print the same insight already on the measure card
+  const tipText = useMemo(() => {
+    const brief = measure.brief.trim();
+    for (const tip of measure.tips) {
+      const t = tip.trim();
+      if (t && t !== brief && !brief.includes(t)) return t;
+    }
+    const detail = measure.detail.trim();
+    if (detail && detail !== brief) return detail;
+    return null;
+  }, [measure.brief, measure.detail, measure.tips]);
   const measureBg = getMeasureIconBg(measure.id);
 
   useEffect(() => {
@@ -179,13 +190,17 @@ export function MeasureSuggestions({ measure }: MeasureSuggestionsProps) {
     });
   }, []);
 
+  if (!tipText && !hasProducts) {
+    return null;
+  }
+
   return (
     <View style={[styles.suggestionBox, { backgroundColor: measureBg }]}>
-      <Text style={styles.boxText}>{measure.detail}</Text>
+      {tipText ? <Text style={styles.boxText}>{tipText}</Text> : null}
 
       {hasProducts && (
         <View style={styles.recommendedBlock}>
-          <Text style={styles.boxText}>Try these products</Text>
+          <Text style={styles.boxLabel}>Try these products</Text>
           <FlatList
             ref={listRef}
             data={productItems}
@@ -238,6 +253,10 @@ const styles = StyleSheet.create({
   },
   boxText: {
     ...type.body,
+    color: colors.dark,
+  },
+  boxLabel: {
+    ...type.label,
     color: colors.dark,
   },
   recommendedBlock: {

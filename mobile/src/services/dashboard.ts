@@ -16,6 +16,23 @@ export interface DashboardMetric {
   severity?: 'mild' | 'moderate' | 'severe';
 }
 
+export interface MetricPriority {
+  metric: string;
+  why: string;
+  suggestion: string;
+}
+
+export interface MetricInsight {
+  id: string;
+  label: string;
+  score: number;
+  evidence?: string | null;
+  confidence?: string | null;
+  zones_affected?: string[];
+  suggestion?: string | null;
+  why?: string | null;
+}
+
 export interface DashboardData {
   skin_score: number;
   weekly_change: number;
@@ -26,6 +43,10 @@ export interface DashboardData {
   latest_scan_image_url: string | null;
   latest_scan_image_urls: ScanImageUrls;
   latest_scan_conditions: SkinCondition[];
+  latest_metrics_smoothed?: Record<string, number>;
+  latest_metric_insights?: MetricInsight[];
+  latest_priorities?: MetricPriority[];
+  latest_trend_note?: string | null;
 }
 
 export interface ScanDetail {
@@ -35,6 +56,11 @@ export interface ScanDetail {
   conditions: SkinCondition[];
   scanned_at: string;
   image_urls: ScanImageUrls;
+  metrics_smoothed?: Record<string, number>;
+  metric_insights?: MetricInsight[];
+  priorities?: MetricPriority[];
+  trend_note?: string | null;
+  zone_summaries?: Record<string, string>;
 }
 
 export function scanDetailImages(detail: ScanDetail): Partial<Record<ScanAngle, string>> {

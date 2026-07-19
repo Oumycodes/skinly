@@ -68,6 +68,8 @@ export function HomeScreen() {
               overallScore={data?.skin_score ?? 0}
               summary={data?.latest_scan_summary ?? ''}
               conditions={data?.latest_scan_conditions ?? []}
+              metricInsights={data?.latest_metric_insights}
+              smoothedScores={data?.latest_metrics_smoothed}
               onScanPress={() => navigation.navigate('ScanFlow')}
               onZoomChange={setPhotoZoomed}
             />

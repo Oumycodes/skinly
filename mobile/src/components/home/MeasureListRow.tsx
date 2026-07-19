@@ -13,13 +13,15 @@ interface MeasureListRowProps {
 
 function scoreColor(score: number, active: boolean): string {
   if (active) return colors.surface;
+  if (score <= 0) return colors.textMuted;
   if (score >= 80) return colors.text;
   if (score >= 60) return colors.textSecondary;
   return colors.textMuted;
 }
 
 export function MeasureListRow({ measure, active, onPress }: MeasureListRowProps) {
-  const displayScore = (measure.healthScore / 10).toFixed(1);
+  const displayScore =
+    measure.healthScore > 0 ? (measure.healthScore / 10).toFixed(1) : '—';
 
   return (
     <Pressable

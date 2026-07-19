@@ -34,7 +34,7 @@ function MetricBadge({
         {metric.label}
       </Text>
       <Text style={[sharedCardStyles.badgeScore, active && sharedCardStyles.badgeScoreActive]}>
-        {scoreToTen(metric.score)}
+        {metric.score10.toFixed(1)}
       </Text>
     </Pressable>
   );
@@ -42,8 +42,12 @@ function MetricBadge({
 
 export function ScanResultsView({ result, imageUrls, onZoomChange }: ScanResultsViewProps) {
   const metrics = useMemo(
-    () => buildDisplayMetrics(result.metrics, result.conditions),
-    [result.conditions, result.metrics],
+    () =>
+      buildDisplayMetrics(result.metrics, result.conditions, {
+        findings: result.findings,
+        zones: result.zones,
+      }),
+    [result.conditions, result.findings, result.metrics, result.zones],
   );
 
   const [activeMetricId, setActiveMetricId] = useState<ScanMetricId | null>(null);
@@ -92,8 +96,15 @@ export function ScanResultsView({ result, imageUrls, onZoomChange }: ScanResults
 
       <View style={styles.body}>
         <View style={sharedCardStyles.scoreCard}>
-          <Text style={sharedCardStyles.scoreValue}>{scoreToTen(result.overall_score)}</Text>
+          <Text style={sharedCardStyles.scoreValue}>
+            {scoreToTen(result.overall ?? result.overall_score)}
+          </Text>
           <Text style={sharedCardStyles.scoreSummary}>{result.summary}</Text>
+          {result.see_professional ? (
+            <Text style={styles.proNote}>
+              Some findings may benefit from a professional opinion — this is not a diagnosis.
+            </Text>
+          ) : null}
         </View>
 
         <View style={sharedCardStyles.badgeGrid}>
@@ -122,5 +133,11 @@ const styles = StyleSheet.create({
   },
   body: {
     gap: spacing.section,
+  },
+  proNote: {
+    marginTop: spacing.inner,
+    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
   },
 });

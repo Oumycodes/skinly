@@ -18,18 +18,23 @@ def _days_between(from_dt: datetime, to_dt: datetime) -> int:
 
 def _heuristic_insight(product: ShelfProduct, scans: list) -> TrackingInsight:
     started = product.created_at
+    if isinstance(started, str):
+        started = datetime.fromisoformat(started.replace("Z", "+00:00"))
     if started.tzinfo is None:
         started = started.replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)
     day = _days_between(started, now) + 1
     trial = product.trial_days or 28
 
-    since = [
-        s
-        for s in scans
-        if (s.scanned_at if s.scanned_at.tzinfo else s.scanned_at.replace(tzinfo=timezone.utc))
-        >= started
-    ]
+    since = []
+    for s in scans:
+        scanned = s.scanned_at
+        if isinstance(scanned, str):
+            scanned = datetime.fromisoformat(scanned.replace("Z", "+00:00"))
+        if scanned.tzinfo is None:
+            scanned = scanned.replace(tzinfo=timezone.utc)
+        if scanned >= started:
+            since.append(s)
     since.sort(key=lambda s: s.scanned_at)
     scores = [s.overall_score for s in since]
     start = scores[0] if scores else None
@@ -69,11 +74,19 @@ def _heuristic_insight(product: ShelfProduct, scans: list) -> TrackingInsight:
 
 
 def analyze_shelf_tracking(user_id: str) -> TrackingInsightsResult:
-    products = [p for p in list_shelf_products(user_id) if p.tracking_enabled]
+    try:
+        products = [p for p in list_shelf_products(user_id) if p.tracking_enabled]
+    except Exception:
+        return TrackingInsightsResult(insights=[])
+
     if not products:
         return TrackingInsightsResult(insights=[])
 
-    scans = list_scan_details(user_id, limit=60)
+    try:
+        scans = list_scan_details(user_id, limit=60)
+    except Exception:
+        scans = []
+
     heuristics = {p.id: _heuristic_insight(p, scans) for p in products}
 
     if use_mock_ai() or not has_gemini_api_key():
@@ -82,12 +95,13 @@ def analyze_shelf_tracking(user_id: str) -> TrackingInsightsResult:
     payload_products = []
     for p in products:
         h = heuristics[p.id]
+        ingredients = p.ingredients or []
         payload_products.append(
             {
                 "id": p.id,
                 "name": p.name,
                 "brand": p.brand,
-                "ingredients": p.ingredients[:20],
+                "ingredients": ingredients[:20],
                 "usage_time": p.usage_time or "both",
                 "times_per_week": p.times_per_week,
                 "trial_days": p.trial_days or 28,

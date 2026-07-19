@@ -645,7 +645,16 @@ def list_shelf_products(user_id: str) -> list[ShelfProduct]:
         .order("created_at", desc=True)
         .execute()
     )
-    return [ShelfProduct(**row) for row in result.data]
+    return [
+        ShelfProduct(
+            **{
+                **row,
+                "ingredients": row.get("ingredients") or [],
+                "tracking_enabled": bool(row.get("tracking_enabled", True)),
+            }
+        )
+        for row in (result.data or [])
+    ]
 
 
 def delete_shelf_product(user_id: str, product_id: str) -> None:

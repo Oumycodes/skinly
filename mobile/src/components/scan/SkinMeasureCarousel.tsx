@@ -160,7 +160,7 @@ function ScrollChipRow({
                 { color: statusColor(item.status) },
               ]}
             >
-              {measureScoreTen(item.healthScore)}
+              {item.healthScore > 0 ? measureScoreTen(item.healthScore) : '—'}
             </Text>
           </View>
         </Pressable>

@@ -89,6 +89,9 @@ export function ProgressScreen() {
     summary: dashboard.latest_scan_summary ?? '',
     conditions: dashboard.latest_scan_conditions,
     image_urls: dashboard.latest_scan_image_urls,
+    metric_insights: dashboard.latest_metric_insights,
+    metrics_smoothed: dashboard.latest_metrics_smoothed,
+    trend_note: dashboard.latest_trend_note,
   } : null);
 
   const imageUrls = selectedScan
@@ -118,7 +121,9 @@ export function ProgressScreen() {
             score={displayScan.overall_score}
             summary={displayScan.summary}
             imageUrls={imageUrls}
-            conditions={displayScan.conditions}
+            conditions={displayScan.conditions ?? []}
+            metricInsights={displayScan.metric_insights}
+            smoothedScores={displayScan.metrics_smoothed}
             variant="detail"
             onScanPress={() => navigation.navigate('ScanFlow')}
           />

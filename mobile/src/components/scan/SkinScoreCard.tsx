@@ -3,13 +3,10 @@ import { StyleSheet, Text, View } from 'react-native';
 import { colors, radii } from '../../constants/colors';
 import { spacing } from '../../constants/spacing';
 import { type } from '../../constants/typography';
+import { scoreToTen } from '../../utils/scanMetrics';
 
 interface SkinScoreCardProps {
   score: number;
-}
-
-function scoreToTen(score: number): string {
-  return (score / 10).toFixed(1);
 }
 
 export function SkinScoreCard({ score }: SkinScoreCardProps) {

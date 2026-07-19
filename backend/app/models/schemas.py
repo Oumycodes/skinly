@@ -51,6 +51,63 @@ class ScanResult(BaseModel):
     image_urls: ScanImageUrls | None = None
 
 
+class ZoneBBox(BaseModel):
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+class PipelineFinding(BaseModel):
+    zone: str
+    cx: float
+    cy: float
+    r: float
+    type: str
+    confidence: float
+
+
+class TrialLink(BaseModel):
+    product_id: str
+    day: int
+    len: int
+
+
+class PipelineMetrics(BaseModel):
+    hydration: float
+    oil_balance: float
+    clarity: float
+    calmness: float
+    smoothness: float
+    fine_lines: float
+
+
+class PipelineScanResponse(BaseModel):
+    ok: bool = True
+    scan_id: str
+    overall: float
+    metrics: PipelineMetrics
+    summary: str
+    zones: dict[str, ZoneBBox] = Field(default_factory=dict)
+    findings: list[PipelineFinding] = Field(default_factory=list)
+    see_professional: bool = False
+    trials: list[TrialLink] = Field(default_factory=list)
+    zone_summaries: dict[str, str] = Field(default_factory=dict)
+    priorities: list[dict] = Field(default_factory=list)
+    trend_note: str | None = None
+    # Legacy-compatible fields for older app screens during migration
+    overall_score: int | None = None
+    conditions: list[SkinCondition] = Field(default_factory=list)
+    image_urls: ScanImageUrls | None = None
+    scanned_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class QCFailResponse(BaseModel):
+    ok: bool = False
+    reason: str
+    message: str
+
+
 class ScanQuota(BaseModel):
     plan: str
     limit: int
@@ -148,8 +205,31 @@ class ScanHistoryItem(BaseModel):
     scanned_at: datetime
 
 
+class MetricPriority(BaseModel):
+    metric: str
+    why: str
+    suggestion: str
+
+
+class MetricInsight(BaseModel):
+    """Per-metric score + Gemini evidence for Home/Progress."""
+    id: str
+    label: str
+    score: float  # 0–10
+    evidence: str | None = None
+    confidence: str | None = None
+    zones_affected: list[str] = Field(default_factory=list)
+    suggestion: str | None = None
+    why: str | None = None
+
+
 class ScanDetail(ScanHistoryItem):
     image_urls: ScanImageUrls = Field(default_factory=ScanImageUrls)
+    metrics_smoothed: dict[str, float] = Field(default_factory=dict)
+    metric_insights: list[MetricInsight] = Field(default_factory=list)
+    priorities: list[MetricPriority] = Field(default_factory=list)
+    trend_note: str | None = None
+    zone_summaries: dict[str, str] = Field(default_factory=dict)
 
 
 class DashboardMetric(BaseModel):
@@ -170,6 +250,10 @@ class DashboardData(BaseModel):
     latest_scan_image_url: str | None = None
     latest_scan_image_urls: ScanImageUrls = Field(default_factory=ScanImageUrls)
     latest_scan_conditions: list[SkinCondition] = Field(default_factory=list)
+    latest_metrics_smoothed: dict[str, float] = Field(default_factory=dict)
+    latest_metric_insights: list[MetricInsight] = Field(default_factory=list)
+    latest_priorities: list[MetricPriority] = Field(default_factory=list)
+    latest_trend_note: str | None = None
 
 
 class ProgressCheckin(BaseModel):

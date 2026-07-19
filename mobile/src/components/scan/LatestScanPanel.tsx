@@ -7,32 +7,34 @@ import { sharedCardStyles } from '../../constants/cards';
 import { spacing } from '../../constants/spacing';
 import { type } from '../../constants/typography';
 import type { ScanAngle, ScanMetricId, SkinCondition } from '../../services/scan';
+import type { MetricInsight } from '../../services/dashboard';
 import {
+  buildMeasuresFromInsights,
   buildSkinMeasures,
   type SkinMeasureId,
 } from '../../utils/skinMeasures';
-import { buildDisplayMetrics, primaryRegion } from '../../utils/scanMetrics';
+import { buildDisplayMetrics, primaryRegion, scoreToTen } from '../../utils/scanMetrics';
 import { MeasureBadgeGrid, MeasureListRow } from '../home/MeasureListRow';
 import { InteractiveScanPhoto } from './InteractiveScanPhoto';
 import { MeasureSuggestions } from './MeasureSuggestions';
 import { SkinMeasureCarousel } from './SkinMeasureCarousel';
 
 const MEASURE_TO_METRIC: Record<SkinMeasureId, ScanMetricId> = {
-  hydration: 'dryness',
-  oiliness: 'oiliness',
-  acne: 'acne',
-  barrier: 'redness',
+  hydration: 'hydration',
+  oiliness: 'oil_balance',
+  acne: 'clarity',
+  barrier: 'calmness',
   aging: 'fine_lines',
-  texture: 'texture',
+  texture: 'smoothness',
 };
 
-const METRIC_TO_MEASURE: Record<ScanMetricId, SkinMeasureId> = {
-  dryness: 'hydration',
-  oiliness: 'oiliness',
-  acne: 'acne',
-  redness: 'barrier',
+const METRIC_TO_MEASURE: Partial<Record<ScanMetricId, SkinMeasureId>> = {
+  hydration: 'hydration',
+  oil_balance: 'oiliness',
+  clarity: 'acne',
+  calmness: 'barrier',
   fine_lines: 'aging',
-  texture: 'texture',
+  smoothness: 'texture',
 };
 
 interface LatestScanPanelProps {
@@ -40,13 +42,12 @@ interface LatestScanPanelProps {
   summary: string;
   imageUrls: Partial<Record<ScanAngle, string>>;
   conditions: SkinCondition[];
+  /** Pipeline insights from last scan — preferred over conditions */
+  metricInsights?: MetricInsight[];
+  smoothedScores?: Record<string, number> | null;
   variant?: 'home' | 'detail';
   onScanPress?: () => void;
   onZoomChange?: (zoomed: boolean) => void;
-}
-
-function scoreToTen(score: number): string {
-  return (score / 10).toFixed(1);
 }
 
 export function LatestScanPanel({
@@ -54,12 +55,49 @@ export function LatestScanPanel({
   summary,
   imageUrls,
   conditions,
+  metricInsights,
+  smoothedScores,
   variant = 'detail',
   onScanPress,
   onZoomChange,
 }: LatestScanPanelProps) {
-  const measures = useMemo(() => buildSkinMeasures(conditions), [conditions]);
-  const displayMetrics = useMemo(() => buildDisplayMetrics(undefined, conditions), [conditions]);
+  const measures = useMemo(
+    () =>
+      buildMeasuresFromInsights(
+        metricInsights ?? [],
+        conditions,
+        smoothedScores ?? null,
+      ),
+    [metricInsights, conditions, smoothedScores],
+  );
+  const displayMetrics = useMemo(() => {
+    const scoreSource =
+      smoothedScores && Object.keys(smoothedScores).length > 0
+        ? smoothedScores
+        : null;
+
+    if (scoreSource) {
+      const asApi = Object.entries(scoreSource).map(([id, score]) => ({
+        id: id as ScanMetricId,
+        label: id,
+        score: score <= 10 ? score * 10 : score,
+        regions: [],
+      }));
+      return buildDisplayMetrics(asApi, conditions);
+    }
+
+    if (metricInsights?.length) {
+      const asApi = metricInsights.map((m) => ({
+        id: m.id as ScanMetricId,
+        label: m.label,
+        score: m.score <= 10 ? m.score * 10 : m.score,
+        regions: [],
+      }));
+      return buildDisplayMetrics(asApi, conditions);
+    }
+
+    return buildDisplayMetrics(undefined, conditions);
+  }, [metricInsights, conditions, smoothedScores]);
   const [activeId, setActiveId] = useState<SkinMeasureId | null>(null);
   const [activeRegionIndex, setActiveRegionIndex] = useState(0);
   const [carouselIndex, setCarouselIndex] = useState(() =>
@@ -113,7 +151,7 @@ export function LatestScanPanel({
       <Pressable style={styles.empty} onPress={onScanPress}>
         <Ionicons name="camera-outline" size={36} color={colors.textMuted} />
         <Text style={styles.emptyTitle}>No scan yet</Text>
-        <Text style={styles.emptyBody}>Take a 3-angle scan to see your skin analysis here</Text>
+        <Text style={styles.emptyBody}>Take a face scan to see your skin analysis here</Text>
         {onScanPress && <Text style={styles.emptyCta}>Take your first scan →</Text>}
       </Pressable>
     );
@@ -130,7 +168,8 @@ export function LatestScanPanel({
             activeRegionIndex={activeRegionIndex}
             interactive={variant === 'home'}
             onRegionSelect={(metricId, regionIndex) => {
-              setActiveId(METRIC_TO_MEASURE[metricId]);
+              const measureId = METRIC_TO_MEASURE[metricId];
+              if (measureId) setActiveId(measureId);
               setActiveRegionIndex(regionIndex);
             }}
             onZoomOut={handleZoomOut}

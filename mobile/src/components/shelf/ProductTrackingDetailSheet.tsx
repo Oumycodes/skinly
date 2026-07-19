@@ -56,7 +56,7 @@ function summaryCopy(tracking: ProductTracking): string {
     }
     return `${label} held steady (${tracking.startScore.toFixed(1)} → ${tracking.latestScore.toFixed(1)}). Keep using it consistently.`;
   }
-  return 'Take a few scans during this trial to see how dryness, redness, and other measures change.';
+  return 'Take a few scans during this trial to see how hydration, calmness, and other measures change.';
 }
 
 function MeasureChart({

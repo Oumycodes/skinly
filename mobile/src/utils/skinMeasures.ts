@@ -115,14 +115,14 @@ const ORDER: SkinMeasureId[] = [
   'texture',
 ];
 
-/** Home-screen list labels (dryness, redness, etc.) */
+/** Home-screen list labels (positive-framed pipeline metrics) */
 export const MEASURE_LIST_LABEL: Record<SkinMeasureId, string> = {
-  hydration: 'Dryness',
-  oiliness: 'Oiliness',
-  acne: 'Acne',
-  barrier: 'Redness',
+  hydration: 'Hydration',
+  oiliness: 'Oil balance',
+  acne: 'Clarity',
+  barrier: 'Calmness',
   aging: 'Fine lines',
-  texture: 'Texture',
+  texture: 'Smoothness',
 };
 
 /** Front-facing focus zones */
@@ -321,7 +321,8 @@ function buildGoodMeasure(id: SkinMeasureId): SkinMeasure {
     statusLabel: 'Good',
     brief: meta.goodBrief,
     detail: meta.goodDetail,
-    healthScore: 88,
+    // No fake "8.8" — only show a score when we have pipeline data
+    healthScore: 0,
     recommendations: [],
     tips: meta.goodTips,
   };
@@ -361,6 +362,116 @@ export function buildSkinMeasures(conditions: SkinCondition[]): SkinMeasure[] {
     }
 
     return buildGoodMeasure(id);
+  });
+}
+
+/** Map pipeline metric ids → SkinMeasure ids used by existing UI. */
+const PIPELINE_TO_MEASURE: Record<string, SkinMeasureId> = {
+  hydration: 'hydration',
+  oil_balance: 'oiliness',
+  clarity: 'acne',
+  calmness: 'barrier',
+  fine_lines: 'aging',
+  smoothness: 'texture',
+};
+
+export interface PipelineMetricInsightInput {
+  id: string;
+  label: string;
+  score: number;
+  evidence?: string | null;
+  suggestion?: string | null;
+  why?: string | null;
+  why_now?: string | null;
+  confidence?: string | null;
+}
+
+function statusFromScore10(score: number): {
+  status: SkinMeasure['status'];
+  statusLabel: string;
+} {
+  if (score >= 7.5) return { status: 'good', statusLabel: 'Looking good' };
+  if (score >= 6) return { status: 'mild', statusLabel: 'Mild focus' };
+  if (score >= 4.5) return { status: 'moderate', statusLabel: 'Needs care' };
+  return { status: 'severe', statusLabel: 'Priority' };
+}
+
+/**
+ * Build Home/Progress measure cards from the latest pipeline scan.
+ * Scores always prefer metrics_smoothed (last detected); insights add evidence/tips.
+ */
+export function buildMeasuresFromInsights(
+  insights: PipelineMetricInsightInput[],
+  fallbackConditions: SkinCondition[] = [],
+  smoothedScores?: Record<string, number> | null,
+): SkinMeasure[] {
+  const byMeasure = new Map<SkinMeasureId, PipelineMetricInsightInput>();
+
+  for (const insight of insights) {
+    const mid = PIPELINE_TO_MEASURE[insight.id];
+    if (mid) byMeasure.set(mid, { ...insight });
+  }
+
+  // Authoritative last-scan scores — overlay / fill every metric
+  if (smoothedScores && Object.keys(smoothedScores).length > 0) {
+    for (const [pipelineId, measureId] of Object.entries(PIPELINE_TO_MEASURE)) {
+      const raw = smoothedScores[pipelineId];
+      if (typeof raw !== 'number' || !Number.isFinite(raw)) continue;
+      const score = raw > 10 ? raw / 10 : raw;
+      const existing = byMeasure.get(measureId);
+      byMeasure.set(measureId, {
+        id: pipelineId,
+        label: existing?.label ?? MEASURE_LIST_LABEL[measureId],
+        score,
+        evidence: existing?.evidence,
+        suggestion: existing?.suggestion,
+        why: existing?.why,
+        why_now: existing?.why_now,
+        confidence: existing?.confidence,
+      });
+    }
+  }
+
+  if (byMeasure.size === 0) {
+    return buildSkinMeasures(fallbackConditions);
+  }
+
+  return ORDER.map((id) => {
+    const meta = MEASURE_META[id];
+    const insight = byMeasure.get(id);
+    if (!insight || typeof insight.score !== 'number' || !Number.isFinite(insight.score)) {
+      return buildGoodMeasure(id);
+    }
+
+    const score10 = insight.score <= 10 ? insight.score : insight.score / 10;
+    const { status, statusLabel } = statusFromScore10(score10);
+    const evidence = (insight.evidence || '').trim();
+    const suggestion = (insight.suggestion || '').trim();
+    const whyNow = (insight.why || insight.why_now || '').trim();
+
+    const brief =
+      evidence ||
+      (status === 'good' ? meta.goodBrief : `${MEASURE_LIST_LABEL[id]} could use a little attention.`);
+
+    const detailParts = [
+      whyNow ? whyNow : '',
+      suggestion ? suggestion : '',
+    ].filter(Boolean);
+
+    return {
+      id,
+      icon: meta.icon,
+      title: MEASURE_LIST_LABEL[id],
+      status,
+      statusLabel,
+      brief,
+      // Extra copy only — evidence lives in `brief` (no duplicate in suggestions)
+      detail: detailParts.join('\n\n'),
+      // healthScore is 0–100 so UI can show X.Y via /10
+      healthScore: Math.max(1, Math.round(score10 * 10)),
+      recommendations: MEASURE_EXTRA_RECOMMENDATIONS[id] ?? [],
+      tips: suggestion ? [suggestion, ...meta.goodTips.slice(0, 2)] : meta.goodTips,
+    };
   });
 }
 

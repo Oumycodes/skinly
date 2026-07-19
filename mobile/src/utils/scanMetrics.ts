@@ -1,4 +1,4 @@
-import type { ScanMetric, ScanMetricId } from '../services/scan';
+import type { ScanMetric, ScanMetricId, PipelineMetricId, PipelineFinding, PipelineMetrics, SkinCondition, ZoneBBox } from '../services/scan';
 import { buildSkinMeasures, type SkinMeasureId } from './skinMeasures';
 
 export interface MetricRegion {
@@ -11,52 +11,69 @@ export interface DisplayMetric {
   id: ScanMetricId;
   label: string;
   score: number;
+  /** Score on 0–10 scale for display */
+  score10: number;
   regions: MetricRegion[];
   hasIssue: boolean;
 }
 
-export const METRIC_ORDER: ScanMetricId[] = [
-  'dryness',
-  'oiliness',
-  'acne',
-  'redness',
+export const METRIC_ORDER: PipelineMetricId[] = [
+  'hydration',
+  'oil_balance',
+  'clarity',
+  'calmness',
+  'smoothness',
   'fine_lines',
-  'texture',
 ];
 
-export const METRIC_LABELS: Record<ScanMetricId, string> = {
-  dryness: 'Dryness',
-  oiliness: 'Oiliness',
-  acne: 'Acne',
-  redness: 'Redness',
+export const METRIC_LABELS: Record<PipelineMetricId, string> = {
+  hydration: 'Hydration',
+  oil_balance: 'Oil balance',
+  clarity: 'Clarity',
+  calmness: 'Calmness',
+  smoothness: 'Smoothness',
   fine_lines: 'Fine lines',
-  texture: 'Texture',
 };
 
 /** Fallback zones when the model returns no regions */
-const PRESET_REGIONS: Record<ScanMetricId, MetricRegion[]> = {
-  dryness: [{ x: 0.5, y: 0.22, r: 0.11 }],
-  oiliness: [
+const PRESET_REGIONS: Record<PipelineMetricId, MetricRegion[]> = {
+  hydration: [{ x: 0.5, y: 0.22, r: 0.11 }],
+  oil_balance: [
     { x: 0.5, y: 0.4, r: 0.1 },
     { x: 0.68, y: 0.42, r: 0.07 },
   ],
-  acne: [{ x: 0.65, y: 0.58, r: 0.08 }],
-  redness: [
+  clarity: [{ x: 0.65, y: 0.58, r: 0.08 }],
+  calmness: [
     { x: 0.72, y: 0.63, r: 0.09 },
     { x: 0.26, y: 0.6, r: 0.07 },
   ],
+  smoothness: [{ x: 0.58, y: 0.52, r: 0.08 }],
   fine_lines: [{ x: 0.5, y: 0.3, r: 0.08 }],
-  texture: [{ x: 0.58, y: 0.52, r: 0.08 }],
 };
 
-const SKIN_MEASURE_TO_METRIC: Record<SkinMeasureId, ScanMetricId> = {
-  hydration: 'dryness',
-  oiliness: 'oiliness',
-  acne: 'acne',
-  barrier: 'redness',
+/** Map legacy skin-measure ids → pipeline metrics */
+const SKIN_MEASURE_TO_METRIC: Record<SkinMeasureId, PipelineMetricId> = {
+  hydration: 'hydration',
+  oiliness: 'oil_balance',
+  acne: 'clarity',
+  barrier: 'calmness',
   aging: 'fine_lines',
-  texture: 'texture',
+  texture: 'smoothness',
 };
+
+function isPipelineMetrics(m: ScanMetric[] | PipelineMetrics | undefined): m is PipelineMetrics {
+  return !!m && !Array.isArray(m) && typeof (m as PipelineMetrics).hydration === 'number';
+}
+
+/** Normalize scores that may be 0–10 (pipeline) or 0–100 (legacy storage). */
+export function toScore10(score: number): number {
+  if (score <= 10) return Math.round(score * 10) / 10;
+  return Math.round(score) / 10;
+}
+
+export function scoreToTen(score: number): string {
+  return toScore10(score).toFixed(1);
+}
 
 export function primaryRegion(regions: MetricRegion[]): MetricRegion | null {
   if (regions.length === 0) return null;
@@ -135,34 +152,82 @@ export function zoomTransformForRegion(
   return { scale, tx, ty };
 }
 
+function regionsFromFindings(
+  findings: PipelineFinding[] | undefined,
+  zones: Record<string, ZoneBBox> | undefined,
+  metricId: PipelineMetricId,
+): MetricRegion[] {
+  const kept = (findings ?? []).filter((f) => f.confidence >= 0.7);
+  if (metricId === 'clarity' && kept.length > 0) {
+    return kept.map((f) => ({ x: f.cx, y: f.cy, r: Math.max(f.r, 0.04) }));
+  }
+  if (metricId === 'calmness' && zones) {
+    const cheek = zones.left_cheek || zones.right_cheek;
+    if (cheek) {
+      return [{ x: cheek.x + cheek.w / 2, y: cheek.y + cheek.h / 2, r: Math.min(cheek.w, cheek.h) / 2 }];
+    }
+  }
+  return PRESET_REGIONS[metricId];
+}
+
 export function buildDisplayMetrics(
-  apiMetrics: ScanMetric[] | undefined,
-  conditions: Parameters<typeof buildSkinMeasures>[0],
+  apiMetrics: ScanMetric[] | PipelineMetrics | undefined,
+  conditions: SkinCondition[] | undefined,
+  options?: {
+    findings?: PipelineFinding[];
+    zones?: Record<string, ZoneBBox>;
+  },
 ): DisplayMetric[] {
-  const byId = new Map<ScanMetricId, ScanMetric>();
-  for (const m of apiMetrics ?? []) {
-    byId.set(m.id, m);
+  const scoreById = new Map<PipelineMetricId, number>();
+
+  if (isPipelineMetrics(apiMetrics)) {
+    for (const id of METRIC_ORDER) {
+      scoreById.set(id, toScore10(apiMetrics[id]));
+    }
+  } else if (Array.isArray(apiMetrics)) {
+    for (const m of apiMetrics) {
+      const id = m.id as PipelineMetricId;
+      if (METRIC_ORDER.includes(id)) {
+        scoreById.set(id, toScore10(m.score));
+      }
+      // Legacy name map
+      const legacyMap: Record<string, PipelineMetricId> = {
+        dryness: 'hydration',
+        oiliness: 'oil_balance',
+        acne: 'clarity',
+        redness: 'calmness',
+        texture: 'smoothness',
+      };
+      const mapped = legacyMap[m.id];
+      if (mapped && !scoreById.has(mapped)) {
+        // Invert dryness/oiliness/acne/redness (old: high = bad) ≈ 10 - score/10
+        const s10 = toScore10(m.score);
+        const inverted = ['dryness', 'oiliness', 'acne', 'redness'].includes(m.id)
+          ? Math.max(0, Math.min(10, 10 - s10))
+          : s10;
+        scoreById.set(mapped, inverted);
+      }
+    }
   }
 
-  const skinMeasures = buildSkinMeasures(conditions);
-  const scoreByMetric = new Map<ScanMetricId, number>();
-  const issueByMetric = new Map<ScanMetricId, boolean>();
-  for (const sm of skinMeasures) {
-    const metricId = SKIN_MEASURE_TO_METRIC[sm.id];
-    scoreByMetric.set(metricId, sm.healthScore);
-    issueByMetric.set(metricId, sm.status !== 'good');
+  if (scoreById.size === 0 && conditions?.length) {
+    const skinMeasures = buildSkinMeasures(conditions);
+    for (const sm of skinMeasures) {
+      const metricId = SKIN_MEASURE_TO_METRIC[sm.id];
+      scoreById.set(metricId, toScore10(sm.healthScore));
+    }
   }
 
   return METRIC_ORDER.map((id) => {
-    const fromApi = byId.get(id);
-    const regions = fromApi ? fromApi.regions : PRESET_REGIONS[id];
-    const score = fromApi?.score ?? scoreByMetric.get(id) ?? 88;
+    const score10 = scoreById.get(id) ?? 7.5;
+    const regions = regionsFromFindings(options?.findings, options?.zones, id);
     return {
       id,
-      label: fromApi?.label ?? METRIC_LABELS[id],
-      score,
+      label: METRIC_LABELS[id],
+      score: score10 * 10, // keep 0–100 internally for any legacy callers
+      score10,
       regions,
-      hasIssue: issueByMetric.get(id) ?? score < 80,
+      hasIssue: score10 < 6.5,
     };
   });
 }
@@ -176,14 +241,10 @@ export function findDefaultPulseRegion(metrics: DisplayMetric[]): {
   for (const metric of metrics) {
     const region = primaryRegion(metric.regions);
     if (!region) continue;
-    if (!worst || metric.score < worst.score) {
-      worst = { metric, region, score: metric.score };
+    if (!worst || metric.score10 < worst.score) {
+      worst = { metric, region, score: metric.score10 };
     }
   }
 
   return worst ? { metric: worst.metric, region: worst.region } : null;
-}
-
-export function scoreToTen(score: number): string {
-  return (score / 10).toFixed(1);
 }

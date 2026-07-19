@@ -17,7 +17,7 @@ def dashboard(user_id: str = Depends(get_current_user_id)) -> DashboardData:
 @router.get("/history", response_model=list[ScanHistoryItem])
 def scan_history(
     user_id: str = Depends(get_current_user_id),
-    limit: int = Query(default=20, le=50),
+    limit: int = Query(default=20, ge=1, le=100),
 ) -> list[ScanHistoryItem]:
     return list_scans(user_id, limit)
 
@@ -25,7 +25,7 @@ def scan_history(
 @router.get("/history/detail", response_model=list[ScanDetail])
 def scan_history_detail(
     user_id: str = Depends(get_current_user_id),
-    limit: int = Query(default=30, le=50),
+    limit: int = Query(default=30, ge=1, le=100),
 ) -> list[ScanDetail]:
     return list_scan_details(user_id, limit)
 

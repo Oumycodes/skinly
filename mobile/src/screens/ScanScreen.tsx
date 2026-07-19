@@ -1,5 +1,5 @@
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -10,58 +10,114 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 
+import { AnalyzingMeshOverlay } from '../components/AnalyzingMeshOverlay';
 import { FaceGuideOverlay } from '../components/FaceGuideOverlay';
+import { FaceIdScanOverlay } from '../components/FaceIdScanOverlay';
 import { colors } from '../constants/colors';
 import { spacing } from '../constants/spacing';
 import { type } from '../constants/typography';
+import { useFaceIdScanSequence } from '../hooks/useFaceIdScanSequence';
 import { useScanQuota } from '../hooks/useScanQuota';
 import type { ScanStackParamList } from '../navigation/types';
 import { ApiError } from '../services/api';
-import { submitScan, type ScanAngle, type ScanImages } from '../services/scan';
+import {
+  QC_REASON_COPY,
+  submitHybridScan,
+  type ScanAngle,
+  type ScanImages,
+} from '../services/scan';
 import { cropCaptureToFaceGuide } from '../utils/cropFaceGuide';
 import { SCAN_ANGLES } from '../utils/skinMeasures';
 
 type Props = NativeStackScreenProps<ScanStackParamList, 'ScanCamera'>;
 
-const STEP_COPY: Record<
-  ScanAngle,
-  { title: string; subtitle: string; step: number }
-> = {
+type FlowPhase =
+  | 'idle'
+  | 'sweeping'
+  | 'bridge'
+  | 'posed'
+  | 'analyzing';
+
+const POSED_COPY: Record<ScanAngle, { title: string; subtitle: string }> = {
   front: {
     title: 'Front view',
     subtitle: 'Face the camera and align within the oval',
-    step: 1,
   },
   left: {
     title: 'Left profile',
     subtitle: 'Turn slowly to show your left cheek',
-    step: 2,
   },
   right: {
     title: 'Right profile',
     subtitle: 'Turn to show your right cheek',
-    step: 3,
   },
 };
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export function ScanScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
-  const [stepIndex, setStepIndex] = useState(0);
-  const [captures, setCaptures] = useState<Partial<ScanImages>>({});
-  const [isCapturing, setIsCapturing] = useState(false);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [flowPhase, setFlowPhase] = useState<FlowPhase>('idle');
+  const [burstFrames, setBurstFrames] = useState<string[]>([]);
+  const [posedStep, setPosedStep] = useState(0);
+  const [posedCaptures, setPosedCaptures] = useState<Partial<ScanImages>>({});
+  const [isCapturingPosed, setIsCapturingPosed] = useState(false);
+  const [gateHint, setGateHint] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { quota, refresh: refreshQuota } = useScanQuota();
 
-  const currentAngle = SCAN_ANGLES[stepIndex]!;
-  const copy = STEP_COPY[currentAngle];
+  const takePicture = useCallback(async () => {
+    if (!cameraRef.current) {
+      throw new Error('Camera not ready');
+    }
+    const photo = await cameraRef.current.takePictureAsync({
+      quality: 0.85,
+      skipProcessing: false,
+      shutterSound: false,
+    });
+    if (!photo?.uri) {
+      throw new Error('Failed to capture photo');
+    }
+    return photo.uri;
+  }, []);
+
+  const {
+    progress,
+    instruction,
+    setInstruction,
+    runSequence,
+    reset: resetSweep,
+    cancel,
+  } = useFaceIdScanSequence({ takePicture });
+
+  const currentAngle = SCAN_ANGLES[posedStep]!;
+  const posedCopy = POSED_COPY[currentAngle];
   const limitReached =
     quota?.plan === 'free' && quota.limit > 0 && quota.remaining <= 0;
+  const busy =
+    flowPhase === 'sweeping' ||
+    flowPhase === 'bridge' ||
+    flowPhase === 'analyzing' ||
+    isCapturingPosed;
 
   function handleClose() {
+    cancel();
     navigation.getParent()?.goBack();
+  }
+
+  function resetAll() {
+    cancel();
+    resetSweep();
+    setFlowPhase('idle');
+    setBurstFrames([]);
+    setPosedStep(0);
+    setPosedCaptures({});
+    setIsCapturingPosed(false);
+    setInstruction('Align your face in the oval, then start');
   }
 
   if (!permission) {
@@ -80,8 +136,7 @@ export function ScanScreen({ navigation }: Props) {
         </Pressable>
         <Text style={styles.permissionTitle}>Camera access needed</Text>
         <Text style={styles.permissionBody}>
-          skins uses your front camera to analyze your skin from three angles. Photos are sent
-          securely for analysis.
+          skins uses your front camera to analyze your skin. Photos are sent securely for analysis.
         </Text>
         <Pressable style={styles.permissionButton} onPress={requestPermission}>
           <Text style={styles.permissionButtonText}>Allow camera</Text>
@@ -90,51 +145,102 @@ export function ScanScreen({ navigation }: Props) {
     );
   }
 
-  async function handleCapture() {
-    if (!cameraRef.current || isCapturing || isAnalyzing || limitReached) return;
+  async function finishAndAnalyze(
+    burst: string[],
+    posed: ScanImages,
+  ) {
+    setFlowPhase('analyzing');
+    setInstruction('Analyzing your skin…');
 
-    setIsCapturing(true);
+    const croppedBurst: string[] = [];
+    for (const raw of burst) {
+      try {
+        croppedBurst.push(await cropCaptureToFaceGuide(raw, 'front'));
+      } catch {
+        // skip
+      }
+    }
+
+    const result = await submitHybridScan(croppedBurst, posed);
+    await refreshQuota();
+
+    navigation.navigate('ScanResult', {
+      result,
+      localImages: {
+        front: result.image_urls?.front ?? posed.front,
+        left: result.image_urls?.left ?? posed.left,
+        right: result.image_urls?.right ?? posed.right,
+      },
+    });
+    resetAll();
+  }
+
+  async function handleStartScan() {
+    if (busy || limitReached || flowPhase !== 'idle') return;
+
     setError(null);
+    setGateHint(null);
+    setFlowPhase('sweeping');
 
     try {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.9,
-        skipProcessing: false,
-      });
+      const { allFrames } = await runSequence();
+      setBurstFrames(allFrames);
 
-      if (!photo?.uri) {
-        throw new Error('Failed to capture photo');
+      // Smooth bridge into posed 3-angle capture
+      setFlowPhase('bridge');
+      setInstruction('Nice — next we’ll capture front, left, and right');
+      await sleep(1100);
+
+      setPosedStep(0);
+      setPosedCaptures({});
+      setFlowPhase('posed');
+      setInstruction(POSED_COPY.front.subtitle);
+    } catch (err) {
+      if (err instanceof Error && err.message === 'cancelled') {
+        resetAll();
+        return;
       }
+      setError(err instanceof Error ? err.message : 'Scan failed. Please try again.');
+      resetAll();
+    }
+  }
 
-      const faceUri = await cropCaptureToFaceGuide(photo.uri, currentAngle);
-      const nextCaptures = { ...captures, [currentAngle]: faceUri };
-      setCaptures(nextCaptures);
+  async function handlePosedCapture() {
+    if (flowPhase !== 'posed' || isCapturingPosed || limitReached) return;
 
-      const isLastStep = stepIndex >= SCAN_ANGLES.length - 1;
-      if (!isLastStep) {
-        setStepIndex(stepIndex + 1);
+    setIsCapturingPosed(true);
+    setError(null);
+    setGateHint(null);
+
+    try {
+      const raw = await takePicture();
+      const cropped = await cropCaptureToFaceGuide(raw, currentAngle);
+      const nextCaptures = { ...posedCaptures, [currentAngle]: cropped };
+      setPosedCaptures(nextCaptures);
+
+      const isLast = posedStep >= SCAN_ANGLES.length - 1;
+      if (!isLast) {
+        const next = posedStep + 1;
+        setPosedStep(next);
+        setInstruction(POSED_COPY[SCAN_ANGLES[next]!]!.subtitle);
         return;
       }
 
-      setIsAnalyzing(true);
-      const images = nextCaptures as ScanImages;
-      const result = await submitScan(images);
-      await refreshQuota();
-
-      const serverImages: Partial<ScanImages> = {};
-      if (result.image_urls?.front) serverImages.front = result.image_urls.front;
-      if (result.image_urls?.left) serverImages.left = result.image_urls.left;
-      if (result.image_urls?.right) serverImages.right = result.image_urls.right;
-
-      navigation.navigate('ScanResult', {
-        result,
-        localImages: {
-          front: serverImages.front ?? images.front,
-          left: serverImages.left ?? images.left,
-          right: serverImages.right ?? images.right,
-        },
-      });
+      const posed = nextCaptures as ScanImages;
+      if (!posed.front || !posed.left || !posed.right) {
+        throw new Error('Missing posed photos');
+      }
+      await finishAndAnalyze(burstFrames, posed);
     } catch (err) {
+      if (err instanceof ApiError && err.status === 422) {
+        setGateHint(
+          (err.reason && QC_REASON_COPY[err.reason]) ||
+            err.message ||
+            'Please retake the photo.',
+        );
+        setFlowPhase('posed');
+        return;
+      }
       let message =
         err instanceof ApiError
           ? err.message
@@ -145,45 +251,79 @@ export function ScanScreen({ navigation }: Props) {
         message = 'Please sign in to scan. Go to Profile and sign in with Google or email.';
       }
       setError(message);
+      setFlowPhase('posed');
     } finally {
-      setIsCapturing(false);
-      setIsAnalyzing(false);
+      setIsCapturingPosed(false);
     }
   }
 
-  function handleRetakeStep() {
-    setError(null);
-    if (stepIndex > 0) {
-      setStepIndex(stepIndex - 1);
-    }
+  function handlePosedBack() {
+    if (posedStep <= 0 || isCapturingPosed) return;
+    const prev = posedStep - 1;
+    setPosedStep(prev);
+    setInstruction(POSED_COPY[SCAN_ANGLES[prev]!]!.subtitle);
   }
+
+  const showFaceIdOverlay =
+    flowPhase === 'idle' || flowPhase === 'sweeping' || flowPhase === 'bridge';
+
+  const displayProgress =
+    flowPhase === 'bridge' || flowPhase === 'posed' ? 1 : progress;
+
+  const overlayInstruction =
+    flowPhase === 'idle' && !gateHint && !error
+      ? 'Move your head slowly to complete the circle.'
+      : flowPhase === 'bridge'
+        ? 'Nice — next we’ll capture front, left, and right'
+        : flowPhase === 'posed'
+          ? posedCopy.subtitle
+          : instruction;
 
   return (
     <View style={styles.container}>
       <CameraView ref={cameraRef} style={styles.camera} facing="front" />
 
-      <FaceGuideOverlay angle={currentAngle} />
+      {flowPhase === 'analyzing' ? (
+        <AnalyzingMeshOverlay />
+      ) : showFaceIdOverlay ? (
+        <FaceIdScanOverlay
+          progress={displayProgress}
+          instruction={overlayInstruction}
+          hint={gateHint}
+        />
+      ) : (
+        <>
+          <FaceGuideOverlay angle={currentAngle} />
+          <View style={[styles.posedCopy, { top: insets.top + 88 }]} pointerEvents="none">
+            <Text style={styles.posedTitle}>{posedCopy.title}</Text>
+            <Text style={styles.posedSubtitle}>{posedCopy.subtitle}</Text>
+            <Text style={styles.posedStep}>Photo {posedStep + 1} of 3</Text>
+            {gateHint ? <Text style={styles.gateText}>{gateHint}</Text> : null}
+          </View>
+        </>
+      )}
 
+      {flowPhase !== 'analyzing' && (
       <View style={[styles.topBar, { paddingTop: insets.top + 12 }]}>
         <Pressable style={styles.closeButton} onPress={handleClose} hitSlop={12}>
           <Text style={styles.closeButtonText}>✕</Text>
         </Pressable>
         <View style={styles.topBarCenter}>
-          <View style={styles.stepDots}>
-            {SCAN_ANGLES.map((angle, index) => (
-              <View
-                key={angle}
-                style={[
-                  styles.stepDot,
-                  index <= stepIndex && styles.stepDotActive,
-                  captures[angle] && index < stepIndex && styles.stepDotDone,
-                ]}
-              />
-            ))}
-          </View>
-          <Text style={styles.title}>{copy.title}</Text>
-          <Text style={styles.subtitle}>{copy.subtitle}</Text>
-          <Text style={styles.stepLabel}>Photo {copy.step} of 3</Text>
+          <Text style={styles.title}>Face scan</Text>
+          {flowPhase === 'posed' && (
+            <View style={styles.stepDots}>
+              {SCAN_ANGLES.map((angle, index) => (
+                <View
+                  key={angle}
+                  style={[
+                    styles.stepDot,
+                    index <= posedStep && styles.stepDotActive,
+                    posedCaptures[angle] && index < posedStep && styles.stepDotDone,
+                  ]}
+                />
+              ))}
+            </View>
+          )}
           {quota && quota.plan === 'free' && quota.limit > 0 && (
             <Text style={styles.quota}>
               {quota.remaining} free scan{quota.remaining === 1 ? '' : 's'} left
@@ -192,9 +332,11 @@ export function ScanScreen({ navigation }: Props) {
         </View>
         <View style={styles.topBarSpacer} />
       </View>
+      )}
 
-      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 24 }]}>
-        {error && <Text style={styles.errorText}>{error}</Text>}
+      {flowPhase !== 'analyzing' && (
+      <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 28 }]}>
+        {error && !gateHint ? <Text style={styles.errorText}>{error}</Text> : null}
 
         {limitReached && (
           <Text style={styles.limitText}>
@@ -202,39 +344,60 @@ export function ScanScreen({ navigation }: Props) {
           </Text>
         )}
 
-        <View style={styles.bottomActions}>
-          {stepIndex > 0 && !isCapturing && !isAnalyzing && (
-            <Pressable style={styles.retakeButton} onPress={handleRetakeStep}>
-              <Text style={styles.retakeButtonText}>Back</Text>
-            </Pressable>
-          )}
+        {flowPhase === 'posed' ? (
+          <View style={styles.posedActions}>
+            {posedStep > 0 ? (
+              <Pressable style={styles.backButton} onPress={handlePosedBack}>
+                <Text style={styles.backButtonText}>Back</Text>
+              </Pressable>
+            ) : (
+              <View style={styles.backSpacer} />
+            )}
 
+            <Pressable
+              style={[
+                styles.captureButton,
+                (isCapturingPosed || limitReached) && styles.captureButtonDisabled,
+              ]}
+              onPress={handlePosedCapture}
+              disabled={isCapturingPosed || limitReached}
+            >
+              {isCapturingPosed ? (
+                <ActivityIndicator color={colors.primary} size="large" />
+              ) : (
+                <View style={styles.captureButtonInner} />
+              )}
+            </Pressable>
+
+            <View style={styles.backSpacer} />
+          </View>
+        ) : (
           <Pressable
             style={[
-              styles.captureButton,
-              (isCapturing || isAnalyzing || limitReached) && styles.captureButtonDisabled,
+              styles.startButton,
+              (busy || limitReached || flowPhase !== 'idle') && styles.startButtonDisabled,
             ]}
-            onPress={handleCapture}
-            disabled={isCapturing || isAnalyzing || limitReached}
+            onPress={handleStartScan}
+            disabled={busy || limitReached || flowPhase !== 'idle'}
           >
-            {isCapturing || isAnalyzing ? (
-              <ActivityIndicator color={colors.primary} size="large" />
+            {busy ? (
+              <ActivityIndicator color="#fff" />
             ) : (
-              <View style={styles.captureButtonInner} />
+              <Text style={styles.startButtonText}>
+                {gateHint || error ? 'Try again' : 'Start scan'}
+              </Text>
             )}
           </Pressable>
+        )}
 
-          <View style={styles.retakeSpacer} />
-        </View>
-
-        <Text style={styles.hint}>
-          {isAnalyzing
-            ? 'Detecting your face & analyzing skin…'
-            : isCapturing
-              ? 'Framing your face…'
-              : 'Align your face in the oval, then tap'}
-        </Text>
+        {flowPhase === 'posed' && !isCapturingPosed ? (
+          <Text style={styles.hint}>Align, then tap to capture</Text>
+        ) : null}
+        {flowPhase === 'sweeping' ? (
+          <Text style={styles.hint}>Keep moving slowly around the circle</Text>
+        ) : null}
       </View>
+      )}
     </View>
   );
 }
@@ -296,7 +459,7 @@ const styles = StyleSheet.create({
   stepDots: {
     flexDirection: 'row',
     gap: 6,
-    marginBottom: 6,
+    marginTop: 6,
   },
   stepDot: {
     width: 8,
@@ -308,7 +471,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   stepDotDone: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#1D9E75',
   },
   closeButton: {
     width: 40,
@@ -339,21 +502,31 @@ const styles = StyleSheet.create({
     ...type.sectionTitle,
     color: colors.surface,
   },
-  subtitle: {
-    ...type.bodySmall,
-    color: 'rgba(255,255,255,0.8)',
-    textAlign: 'center',
-    paddingHorizontal: spacing.item,
-  },
-  stepLabel: {
-    ...type.caption,
-    color: 'rgba(255,255,255,0.65)',
-    marginTop: 2,
-  },
   quota: {
     ...type.caption,
     color: 'rgba(255,255,255,0.7)',
     marginTop: 4,
+  },
+  posedCopy: {
+    position: 'absolute',
+    left: spacing.screen,
+    right: spacing.screen,
+    alignItems: 'center',
+    gap: 4,
+  },
+  posedTitle: {
+    ...type.sectionTitle,
+    color: '#fff',
+  },
+  posedSubtitle: {
+    ...type.bodySmall,
+    color: 'rgba(255,255,255,0.85)',
+    textAlign: 'center',
+  },
+  posedStep: {
+    ...type.caption,
+    color: 'rgba(255,255,255,0.65)',
+    marginTop: 2,
   },
   limitText: {
     ...type.bodySmall,
@@ -368,24 +541,25 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     gap: spacing.item,
+    paddingHorizontal: spacing.screen,
   },
-  bottomActions: {
+  posedActions: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    paddingHorizontal: 40,
+    paddingHorizontal: 24,
   },
-  retakeButton: {
+  backButton: {
     width: 72,
     alignItems: 'center',
     paddingVertical: 10,
   },
-  retakeButtonText: {
+  backButtonText: {
     ...type.link,
     color: colors.surface,
   },
-  retakeSpacer: {
+  backSpacer: {
     width: 72,
   },
   captureButton: {
@@ -396,20 +570,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 4,
-    borderColor: colors.primary,
+    borderColor: '#1D9E75',
   },
   captureButtonDisabled: {
-    opacity: 0.7,
+    opacity: 0.55,
   },
   captureButtonInner: {
     width: 58,
     height: 58,
     borderRadius: 29,
-    backgroundColor: colors.primary,
+    backgroundColor: '#1D9E75',
+  },
+  startButton: {
+    minWidth: 200,
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 28,
+    backgroundColor: '#1D9E75',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startButtonDisabled: {
+    opacity: 0.55,
+  },
+  startButtonText: {
+    ...type.button,
+    color: '#FFFFFF',
+    fontSize: 17,
   },
   hint: {
     ...type.bodySmall,
     color: 'rgba(255,255,255,0.75)',
+  },
+  gateText: {
+    ...type.bodySmall,
+    color: '#FFD166',
+    textAlign: 'center',
+    marginTop: 8,
   },
   errorText: {
     ...type.bodySmall,

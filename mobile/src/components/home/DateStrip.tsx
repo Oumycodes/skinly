@@ -13,6 +13,7 @@ import { colors, radii } from '../../constants/colors';
 import { spacing } from '../../constants/spacing';
 import { font } from '../../constants/typography';
 import { scoreDayColors, noScoreDayColors } from '../../utils/scoreColors';
+import { scoreToTen } from '../../utils/scanMetrics';
 
 const DAY_LABELS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 const MONTH_LABELS = [
@@ -51,10 +52,6 @@ function dateKey(d: Date): string {
 
 function dateKeyFromIso(iso: string): string {
   return dateKey(new Date(iso));
-}
-
-function scoreToTen(score: number): string {
-  return (score / 10).toFixed(1);
 }
 
 function formatWeekLabel(weekStart: Date): string {

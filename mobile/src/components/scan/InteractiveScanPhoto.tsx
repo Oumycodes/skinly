@@ -465,31 +465,25 @@ function ScanPhotoFrame({
 }
 
 function AngleDots({
+  angles,
   activeIndex,
   onDotPress,
-  available,
 }: {
+  angles: ScanAngle[];
   activeIndex: number;
   onDotPress: (index: number) => void;
-  available: boolean[];
 }) {
+  if (angles.length <= 1) return null;
   return (
     <View style={styles.dots}>
-      {SCAN_ANGLES.map((angle, index) => (
+      {angles.map((angle, index) => (
         <Pressable
           key={angle}
           onPress={() => onDotPress(index)}
           hitSlop={10}
           accessibilityLabel={angle}
-          disabled={!available[index]}
         >
-          <View
-            style={[
-              styles.dot,
-              index === activeIndex && styles.dotActive,
-              !available[index] && styles.dotMissing,
-            ]}
-          />
+          <View style={[styles.dot, index === activeIndex && styles.dotActive]} />
         </Pressable>
       ))}
     </View>
@@ -536,17 +530,17 @@ export function InteractiveScanPhoto({
     [imageSize.h, imageSize.w],
   );
 
-  const available = useMemo(
-    () => SCAN_ANGLES.map((angle) => Boolean(imageUrls[angle])),
-    [imageUrls],
-  );
+  const angles = useMemo(() => {
+    const present = SCAN_ANGLES.filter((angle) => imageUrls[angle]);
+    return present.length > 0 ? present : (['front'] as ScanAngle[]);
+  }, [imageUrls]);
 
   const scrollToIndex = useCallback((index: number, animated = true) => {
-    const clamped = Math.max(0, Math.min(index, SCAN_ANGLES.length - 1));
+    const clamped = Math.max(0, Math.min(index, angles.length - 1));
     scrollIndexRef.current = clamped;
     setActiveIndex(clamped);
     listRef.current?.scrollToIndex({ index: clamped, animated });
-  }, []);
+  }, [angles.length]);
 
   const resetZoom = useCallback(() => {
     Animated.parallel([
@@ -619,9 +613,9 @@ export function InteractiveScanPhoto({
   const onMomentumScrollEnd = useCallback(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
       const index = Math.round(event.nativeEvent.contentOffset.x / PAGE_WIDTH);
-      handleAngleChange(Math.max(0, Math.min(index, SCAN_ANGLES.length - 1)));
+      handleAngleChange(Math.max(0, Math.min(index, angles.length - 1)));
     },
-    [handleAngleChange],
+    [angles.length, handleAngleChange],
   );
 
   const onScrollToIndexFailed = useCallback((info: { index: number }) => {
@@ -673,7 +667,7 @@ export function InteractiveScanPhoto({
       <View style={styles.carouselHost}>
         <FlatList
           ref={listRef}
-          data={SCAN_ANGLES}
+          data={angles}
           keyExtractor={(item) => item}
           renderItem={renderItem}
           horizontal
@@ -702,11 +696,9 @@ export function InteractiveScanPhoto({
         ) : null}
       </View>
       <AngleDots
+        angles={angles}
         activeIndex={activeIndex}
-        available={available}
-        onDotPress={(index) => {
-          if (available[index]) scrollToIndex(index);
-        }}
+        onDotPress={(index) => scrollToIndex(index)}
       />
     </View>
   );
