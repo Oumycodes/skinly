@@ -94,6 +94,35 @@ def _signed_scan_url(image_path: str) -> str | None:
     return supabase_call(query, None)
 
 
+def _bulk_signed_urls(paths: list[str]) -> dict[str, str]:
+    """Sign many storage paths in a single request (vs. one round-trip each)."""
+    unique = list(dict.fromkeys(p for p in paths if p))
+    if not unique:
+        return {}
+
+    def query(client):
+        result = client.storage.from_("scan-images").create_signed_urls(unique, 3600)
+        out: dict[str, str] = {}
+        for idx, item in enumerate(result or []):
+            if isinstance(item, dict):
+                if item.get("error"):
+                    continue
+                path = item.get("path")
+                url = item.get("signedURL") or item.get("signedUrl") or item.get("signed_url")
+            else:
+                path = getattr(item, "path", None)
+                url = getattr(item, "signed_url", None) or getattr(item, "signedURL", None)
+            if not url:
+                continue
+            if not path and idx < len(unique):
+                path = unique[idx]
+            if path:
+                out[str(path)] = str(url)
+        return out
+
+    return supabase_call(query, {})
+
+
 def _resolve_image_paths(row: dict) -> dict[str, str]:
     paths: dict[str, str] = {}
     stored = row.get("image_paths") or {}
@@ -116,11 +145,19 @@ def _resolve_image_paths(row: dict) -> dict[str, str]:
     return paths
 
 
-def _signed_urls_for_paths(paths: dict[str, str]) -> ScanImageUrls:
+def _signed_urls_for_paths(
+    paths: dict[str, str],
+    url_map: dict[str, str] | None = None,
+) -> ScanImageUrls:
     urls: dict[str, str | None] = {}
     for angle in ("front", "left", "right"):
         path = paths.get(angle)
-        urls[angle] = _signed_scan_url(path) if path else None
+        if not path:
+            urls[angle] = None
+        elif url_map is not None:
+            urls[angle] = url_map.get(path)
+        else:
+            urls[angle] = _signed_scan_url(path)
     return ScanImageUrls(**urls)
 
 
@@ -241,7 +278,7 @@ def _build_metric_insights(row: dict) -> tuple[list[MetricInsight], list[MetricP
     return insights, priorities, trend_note, {str(k): str(v) for k, v in zone_summaries.items()}
 
 
-def _row_to_scan_detail(row: dict) -> ScanDetail:
+def _row_to_scan_detail(row: dict, url_map: dict[str, str] | None = None) -> ScanDetail:
     image_paths = _resolve_image_paths(row)
     insights, priorities, trend_note, zone_summaries = _build_metric_insights(row)
     return ScanDetail(
@@ -250,7 +287,7 @@ def _row_to_scan_detail(row: dict) -> ScanDetail:
         summary=row["summary"],
         conditions=_parse_conditions(row.get("conditions", [])),
         scanned_at=row["scanned_at"],
-        image_urls=_signed_urls_for_paths(image_paths),
+        image_urls=_signed_urls_for_paths(image_paths, url_map),
         metrics_smoothed=_extract_smoothed(row),
         metric_insights=insights,
         priorities=priorities,
@@ -302,10 +339,17 @@ def list_scans(user_id: str, limit: int = 20) -> list[ScanHistoryItem]:
 
 
 def list_scan_details(user_id: str, limit: int = 30) -> list[ScanDetail]:
+    rows = _fetch_scan_rows(user_id, limit)
+    # Sign every image path across all rows in ONE storage request
+    all_paths: list[str] = []
+    for row in rows:
+        all_paths.extend(_resolve_image_paths(row).values())
+    url_map = _bulk_signed_urls(all_paths)
+
     details: list[ScanDetail] = []
-    for row in _fetch_scan_rows(user_id, limit):
+    for row in rows:
         try:
-            details.append(_row_to_scan_detail(row))
+            details.append(_row_to_scan_detail(row, url_map))
         except Exception:
             continue
     return details

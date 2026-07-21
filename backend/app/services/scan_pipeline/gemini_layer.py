@@ -82,8 +82,11 @@ RUBRICS (10 = ideal):
   widespread flaking.
 - oil_balance: 9-10 minimal specular shine; 7-8 slight T-zone shine; 5-6 clear
   T-zone shine; 3-4 shine beyond T-zone; 0-2 heavy shine everywhere.
-- clarity: 9-10 0-1 kept inflammatory/comedone findings; 7-8 2-4; 5-6 5-9;
-  3-4 10-19; 0-2 20+.
+- clarity: count EVERY visible active lesion (papule, pustule, comedone,
+  inflamed spot) across the primary image AND the close-up images — do not rely
+  only on the provided lesion_candidates, which under-count. 9-10 clear, 0-1
+  lesions; 7-8 2-4; 5-6 5-9; 3-4 10-19; 1-2 20+. Widespread active acne over
+  multiple zones is a 1-3, never higher, regardless of good skin elsewhere.
 - calmness: from redness_raw deltas: 9-10 all zones < +1.5; 7-8 one zone
   +1.5-3; 5-6 multiple zones +1.5-3; 3-4 any zone +3-5; 0-2 any zone > +5.
 - smoothness: from texture_raw relative to typical: 9-10 low everywhere; step
@@ -92,6 +95,17 @@ RUBRICS (10 = ideal):
   forehead; 5-6 visible in one zone; 3-4 multiple zones; 0-2 pronounced.
 
 SCORING DISCIPLINE:
+- Be strict and truthful. Do NOT inflate scores or soften bad results. You are
+  not here to reassure — you are here to report the skin accurately. When in
+  doubt, score toward the MORE severe interpretation.
+- CONSISTENCY (mandatory): your metric scores must match your written
+  observations. If your summary or zone_summaries describe widespread, multiple,
+  or moderate-to-severe lesions/redness/oil for a metric, that metric MUST fall
+  in its low band (roughly 1-4). A severe verbal description paired with a
+  7+ score is a scoring error — fix it before returning.
+- A genuinely bad case (widespread active acne, heavy inflammation) should
+  produce a LOW overall picture: multiple metrics in the 2-4 range. Good
+  hydration or few fine lines does NOT rescue a face covered in active acne.
 - Use the full range the evidence supports, including decimals (7.3, not
   always .0/.5). Do not cluster scores out of caution.
 - NEVER return the same score for every metric (e.g. all 8.8). At least
@@ -260,6 +274,7 @@ def interpret_with_gemini(
     user_profile: dict[str, Any] | None = None,
     previous_scan: dict[str, Any] | None = None,
     active_trials: list[dict[str, Any]] | None = None,
+    context_images: list[tuple[str, bytes]] | None = None,
 ) -> dict[str, Any]:
     client = get_gemini_client()
     prompt_cv = cv_features.to_prompt_dict()
@@ -287,32 +302,67 @@ def interpret_with_gemini(
         "previous_scan": previous_scan,
         "active_trials": active_trials or [],
     }
+    ctx_imgs = [img for img in (context_images or []) if img and img[1]]
+    image_note = ""
+    if ctx_imgs:
+        labels = ", ".join(label for label, _ in ctx_imgs)
+        image_note = (
+            "\n\nADDITIONAL IMAGES (context only, in order after the primary "
+            f"normalized frontal image): {labels}. The primary frontal image is "
+            "the measurement reference. Use the additional images ONLY to refine "
+            "lesion classification, texture, and pore/detail observations. Labels "
+            "'closeup_front'/'closeup_left'/'closeup_right' are high-magnification "
+            "skin shots of the forehead-nose, left cheek, and right cheek "
+            "respectively — rely on them for pore, texture, and small-lesion "
+            "detail. 'left'/'right' show the cheeks/jaw in profile. Do not invent "
+            "findings not visible in any provided image."
+        )
     user_text = (
         "INPUT CONTEXT (JSON):\n"
         + json.dumps(context)
-        + "\n\nComplete all tasks in the system prompt. Return structured JSON only."
+        + image_note
+        + "\n\nComplete all tasks in the system prompt. Return ONLY a JSON object "
+        "that conforms exactly to this JSON Schema (no markdown, no commentary):\n"
+        + json.dumps(RESPONSE_SCHEMA)
     )
 
+    # NOTE: We describe the schema in the prompt instead of passing it as
+    # `response_schema`. Gemini 3 models mark response_schema as strict
+    # (additionalProperties), which the Developer API (API key) rejects.
+    # Prompt-embedded schema works on every current model.
     config_kwargs: dict[str, Any] = {
         "system_instruction": GEMINI_SYSTEM_PROMPT,
         "temperature": 0,
         "response_mime_type": "application/json",
-        "response_schema": RESPONSE_SCHEMA,
         "max_output_tokens": 8192,
     }
-    try:
-        config_kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
-    except Exception:
-        pass
 
-    response = client.models.generate_content(
-        model=get_gemini_model(),
-        contents=[
-            user_text,
-            types.Part.from_bytes(data=normalized_jpeg, mime_type="image/jpeg"),
-        ],
-        config=types.GenerateContentConfig(**config_kwargs),
-    )
+    contents = [
+        user_text,
+        types.Part.from_bytes(data=normalized_jpeg, mime_type="image/jpeg"),
+    ]
+    for _label, img_bytes in ctx_imgs:
+        contents.append(types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"))
+    model = get_gemini_model()
+
+    def _call(extra: dict[str, Any] | None) -> Any:
+        kwargs = {**config_kwargs, **(extra or {})}
+        return client.models.generate_content(
+            model=model,
+            contents=contents,
+            config=types.GenerateContentConfig(**kwargs),
+        )
+
+    # `thinking_budget=0` disables thinking on Gemini 2.5 but is rejected by
+    # Gemini 3 (400 INVALID_ARGUMENT). Try it, then fall back without it.
+    try:
+        thinking = {"thinking_config": types.ThinkingConfig(thinking_budget=0)}
+    except Exception:
+        thinking = None
+    try:
+        response = _call(thinking)
+    except Exception:
+        response = _call(None)
     raw = (response.text or "").strip()
     if not raw:
         raise ValueError("Empty Gemini interpretation")

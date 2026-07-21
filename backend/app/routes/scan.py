@@ -79,6 +79,10 @@ async def scan_skin(
     front: UploadFile | None = File(None),
     left: UploadFile | None = File(None),
     right: UploadFile | None = File(None),
+    closeup: UploadFile | None = File(None),
+    closeup_front: UploadFile | None = File(None),
+    closeup_left: UploadFile | None = File(None),
+    closeup_right: UploadFile | None = File(None),
     images: list[UploadFile] | None = File(None),
     user_id: str = Depends(get_current_user_id),
 ):
@@ -94,19 +98,37 @@ async def scan_skin(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     try:
+        # Frontal frames (burst + front) drive best-frame pick + CV measurement.
         analysis_frames: list[bytes] = []
+        # Profiles + close-up are extra vision context for the Gemini layer.
+        context_images: list[tuple[str, bytes]] = []
         display: dict[str, bytes] = {}
 
         if images:
             for idx, upload in enumerate(images):
                 analysis_frames.append(await _read_image(upload, label=f"images[{idx}]"))
 
-        for angle, upload in (("front", front), ("left", left), ("right", right)):
+        if front is not None:
+            raw = await _read_image(front, label="front")
+            display["front"] = raw
+            analysis_frames.append(raw)
+
+        for angle, upload in (("left", left), ("right", right)):
             if upload is None:
                 continue
             raw = await _read_image(upload, label=angle)
             display[angle] = raw
-            analysis_frames.append(raw)
+            context_images.append((angle, raw))
+
+        # Close-up detail shots — high-magnification context for Gemini only.
+        for label, upload in (
+            ("closeup_front", closeup_front),
+            ("closeup_left", closeup_left),
+            ("closeup_right", closeup_right),
+            ("closeup", closeup),  # legacy single close-up
+        ):
+            if upload is not None:
+                context_images.append((label, await _read_image(upload, label=label)))
 
         # Legacy single-image field
         if image is not None and "front" not in display:
@@ -135,9 +157,13 @@ async def scan_skin(
         )
 
         if len(analysis_frames) == 1:
-            pipeline = run_scan_pipeline(analysis_frames[0], **ctx)
+            pipeline = run_scan_pipeline(
+                analysis_frames[0], context_images=context_images, **ctx
+            )
         else:
-            pipeline = run_scan_pipeline_from_burst(analysis_frames, **ctx)
+            pipeline = run_scan_pipeline_from_burst(
+                analysis_frames, context_images=context_images, **ctx
+            )
 
         return persist_pipeline_scan(
             user_id,

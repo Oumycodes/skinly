@@ -31,6 +31,7 @@ def run_scan_pipeline(
     user_profile: dict[str, Any] | None = None,
     previous_scan: dict[str, Any] | None = None,
     active_trials: list[dict[str, Any]] | None = None,
+    context_images: list[tuple[str, bytes]] | None = None,
 ) -> dict[str, Any]:
     if qc is None:
         qc = run_qc(image_bytes)
@@ -46,6 +47,7 @@ def run_scan_pipeline(
         user_profile=user_profile,
         previous_scan=previous_scan,
         active_trials=active_trials,
+        context_images=context_images,
     )
     metrics_g = flatten_metric_scores(gemini.get("metrics"))
     findings_raw = gemini.get("findings") or []

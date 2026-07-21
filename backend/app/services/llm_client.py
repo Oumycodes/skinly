@@ -68,18 +68,22 @@ def _to_gemini_parts(parts: list[ContentPart]) -> list[Any]:
     return out
 
 
-def _build_config(*, system: str, max_output_tokens: int) -> types.GenerateContentConfig:
+def _build_config(
+    *, system: str, max_output_tokens: int, disable_thinking: bool = True
+) -> types.GenerateContentConfig:
     kwargs: dict[str, Any] = {
         "system_instruction": system,
         "response_mime_type": "application/json",
         "max_output_tokens": max_output_tokens,
         "temperature": 0.2,
     }
-    # Newer Gemini models spend tokens on "thinking" unless disabled.
-    try:
-        kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
-    except Exception:
-        pass
+    # Gemini 2.5 accepts thinking_budget=0 to disable thinking; Gemini 3
+    # rejects it (400). Caller retries without it via disable_thinking=False.
+    if disable_thinking:
+        try:
+            kwargs["thinking_config"] = types.ThinkingConfig(thinking_budget=0)
+        except Exception:
+            pass
     return types.GenerateContentConfig(**kwargs)
 
 
@@ -110,9 +114,23 @@ def generate_json(
     if not content_parts:
         raise ValueError("No content provided to Gemini")
 
-    response = client.models.generate_content(
-        model=get_gemini_model(),
-        contents=_to_gemini_parts(content_parts),
-        config=_build_config(system=system, max_output_tokens=max_output_tokens),
-    )
+    model = get_gemini_model()
+    parts = _to_gemini_parts(content_parts)
+    try:
+        response = client.models.generate_content(
+            model=model,
+            contents=parts,
+            config=_build_config(system=system, max_output_tokens=max_output_tokens),
+        )
+    except Exception:
+        # Retry without thinking_config for models that reject thinking_budget=0
+        response = client.models.generate_content(
+            model=model,
+            contents=parts,
+            config=_build_config(
+                system=system,
+                max_output_tokens=max_output_tokens,
+                disable_thinking=False,
+            ),
+        )
     return _extract_json(response.text or "")

@@ -87,7 +87,8 @@ export const ONBOARDING_STEPS: OnboardingStep[] = [
     id: 'google-auth',
     type: 'google-auth',
     title: 'Save your progress',
-    subtitle: 'Sign in with Google so your shelf, scans, and routine sync to your account.',
+    subtitle:
+      'Create an account with email so your shelf, scans, and routine sync. (Google isn’t available in Expo Go on iPhone — use email.)',
   },
   {
     id: 'skin-type',

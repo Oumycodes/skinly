@@ -124,8 +124,29 @@ def smooth_metrics(
     return out
 
 
+# Acne/redness reflect how troubled the skin is → weigh them more heavily.
+_OVERALL_WEIGHTS = {
+    "hydration": 1.0,
+    "oil_balance": 1.0,
+    "clarity": 1.7,
+    "calmness": 1.3,
+    "smoothness": 1.1,
+    "fine_lines": 0.8,
+}
+
+
 def overall_score(metrics: dict[str, float]) -> float:
     vals = [metrics[k] for k in METRIC_KEYS if k in metrics]
     if not vals:
         return 0.0
-    return round(sum(vals) / len(vals), 1)
+
+    # Weighted mean (problem metrics count more)...
+    num = sum(metrics[k] * _OVERALL_WEIGHTS[k] for k in METRIC_KEYS if k in metrics)
+    den = sum(_OVERALL_WEIGHTS[k] for k in METRIC_KEYS if k in metrics)
+    weighted = num / den if den else sum(vals) / len(vals)
+
+    # ...then pull toward the worst metric so one severe issue can't be hidden
+    # by strong scores elsewhere (a bad-acne face should read as low, not ~7).
+    worst = min(vals)
+    overall = 0.65 * weighted + 0.35 * worst
+    return round(max(0.0, min(10.0, overall)), 1)

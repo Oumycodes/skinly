@@ -6,6 +6,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -228,9 +229,13 @@ function WelcomeStep({ step }: { step: Extract<OnboardingStep, { type: 'welcome'
 }
 
 function GoogleAuthStep({ step }: { step: Extract<OnboardingStep, { type: 'google-auth' }> }) {
-  const { user, signInWithGoogle, authUnavailable } = useAuth();
+  const { user, signInWithGoogle, signIn, signUp, authUnavailable } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [mode, setMode] = useState<'signup' | 'signin'>('signup');
+  const [emailLoading, setEmailLoading] = useState(false);
 
   async function handleGoogle() {
     setLoading(true);
@@ -247,6 +252,32 @@ function GoogleAuthStep({ step }: { step: Extract<OnboardingStep, { type: 'googl
     }
   }
 
+  async function handleEmail() {
+    if (!email.trim() || !password) {
+      setError('Enter an email and password.');
+      return;
+    }
+    setEmailLoading(true);
+    setError(null);
+    try {
+      if (mode === 'signup') {
+        await signUp(email.trim(), password);
+      } else {
+        await signIn(email.trim(), password);
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : mode === 'signup'
+            ? 'Sign-up failed'
+            : 'Sign-in failed',
+      );
+    } finally {
+      setEmailLoading(false);
+    }
+  }
+
   return (
     <View style={[styles.step, styles.centered]}>
       <Text style={styles.title}>{step.title}</Text>
@@ -259,20 +290,67 @@ function GoogleAuthStep({ step }: { step: Extract<OnboardingStep, { type: 'googl
           <Text style={styles.signedInEmail}>{user.email}</Text>
         </View>
       ) : (
-        <Pressable
-          style={[styles.googleButton, loading && styles.googleButtonDisabled]}
-          onPress={() => void handleGoogle()}
-          disabled={loading || authUnavailable}
-        >
-          {loading ? (
-            <Text style={styles.googleButtonText}>Connecting…</Text>
-          ) : (
-            <>
-              <Ionicons name="logo-google" size={20} color={colors.text} />
-              <Text style={styles.googleButtonText}>Continue with Google</Text>
-            </>
-          )}
-        </Pressable>
+        <>
+          <TextInput
+            style={styles.authInput}
+            placeholder="Email"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            autoCorrect={false}
+            value={email}
+            onChangeText={setEmail}
+          />
+          <TextInput
+            style={styles.authInput}
+            placeholder="Password (min 6 characters)"
+            placeholderTextColor={colors.textMuted}
+            secureTextEntry
+            value={password}
+            onChangeText={setPassword}
+          />
+
+          <Pressable
+            style={[styles.emailButton, (emailLoading || authUnavailable) && styles.googleButtonDisabled]}
+            onPress={() => void handleEmail()}
+            disabled={emailLoading || loading || authUnavailable}
+          >
+            <Text style={styles.emailButtonText}>
+              {emailLoading
+                ? 'One moment…'
+                : mode === 'signup'
+                  ? 'Create account'
+                  : 'Sign in'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setMode((m) => (m === 'signup' ? 'signin' : 'signup'))}
+          >
+            <Text style={styles.authSwitch}>
+              {mode === 'signup'
+                ? 'Already have an account? Sign in'
+                : 'New here? Create account'}
+            </Text>
+          </Pressable>
+
+          <Text style={styles.authDivider}>or</Text>
+
+          <Pressable
+            style={[styles.googleButton, loading && styles.googleButtonDisabled]}
+            onPress={() => void handleGoogle()}
+            disabled={loading || authUnavailable}
+          >
+            {loading ? (
+              <Text style={styles.googleButtonText}>Connecting…</Text>
+            ) : (
+              <>
+                <Ionicons name="logo-google" size={20} color={colors.text} />
+                <Text style={styles.googleButtonText}>Continue with Google</Text>
+              </>
+            )}
+          </Pressable>
+        </>
       )}
 
       {authUnavailable ? (
@@ -633,6 +711,48 @@ const styles = StyleSheet.create({
     ...type.bodySmall,
     color: colors.error,
     textAlign: 'center',
+  },
+  redirectHint: {
+    ...type.caption,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.inner,
+  },
+  authDivider: {
+    ...type.bodySmall,
+    color: colors.textMuted,
+    textAlign: 'center',
+    marginTop: spacing.item,
+  },
+  authInput: {
+    width: '100%',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.sm,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    ...font.regular,
+    color: colors.text,
+    marginTop: spacing.item,
+  },
+  emailButton: {
+    width: '100%',
+    backgroundColor: colors.primary,
+    borderRadius: radii.pill,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: spacing.item,
+  },
+  emailButtonText: {
+    ...type.button,
+    color: '#FFFFFF',
+  },
+  authSwitch: {
+    ...type.link,
+    textAlign: 'center',
+    marginTop: spacing.item,
   },
   title: {
     ...type.screenTitle,

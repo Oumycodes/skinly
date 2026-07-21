@@ -170,6 +170,7 @@ export async function quickScanQC(imageUri: string): Promise<void> {
 export async function submitHybridScan(
   burstUris: string[],
   posed: ScanImages,
+  closeups?: Partial<Record<ScanAngle, string>> | null,
 ): Promise<ScanResult> {
   const formData = new FormData();
 
@@ -184,6 +185,10 @@ export async function submitHybridScan(
   appendImage(formData, 'front', posed.front);
   if (posed.left) appendImage(formData, 'left', posed.left);
   if (posed.right) appendImage(formData, 'right', posed.right);
+
+  if (closeups?.front) appendImage(formData, 'closeup_front', closeups.front);
+  if (closeups?.left) appendImage(formData, 'closeup_left', closeups.left);
+  if (closeups?.right) appendImage(formData, 'closeup_right', closeups.right);
 
   return apiFetch<ScanResult>('/scan', {
     method: 'POST',

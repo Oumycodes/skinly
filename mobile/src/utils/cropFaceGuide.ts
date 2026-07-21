@@ -22,13 +22,11 @@ export async function cropCaptureToFaceGuide(
   angle: ScanAngle,
 ): Promise<string> {
   const { width, height } = await getImageSize(uri);
-  const isProfile = angle === 'left' || angle === 'right';
 
-  // Tighter than before — matches FaceId oval (~62% × 38% of screen)
-  const cropW = Math.round(width * (isProfile ? 0.55 : 0.58));
-  const cropH = Math.round(height * (isProfile ? 0.48 : 0.46));
-  const shiftX = isProfile ? Math.round(width * (angle === 'left' ? 0.04 : -0.04)) : 0;
-  const originX = Math.max(0, Math.min(Math.round((width - cropW) / 2 + shiftX), width - cropW));
+  // Same crop for every angle — matches the uniform FaceId oval (~62% × 38%)
+  const cropW = Math.round(width * 0.58);
+  const cropH = Math.round(height * 0.46);
+  const originX = Math.max(0, Math.min(Math.round((width - cropW) / 2), width - cropW));
   // Oval center is ~36% down the screen
   const ovalCy = height * 0.36;
   const originY = Math.max(

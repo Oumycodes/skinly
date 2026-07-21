@@ -38,7 +38,27 @@ type FlowPhase =
   | 'posed'
   | 'analyzing';
 
-const POSED_COPY: Record<ScanAngle, { title: string; subtitle: string }> = {
+/** Posed steps: 3 framed angles, then 3 close-up detail shots (front/left/right) */
+type CaptureStep =
+  | ScanAngle
+  | 'closeup_front'
+  | 'closeup_left'
+  | 'closeup_right';
+const CAPTURE_STEPS: CaptureStep[] = [
+  'front',
+  'left',
+  'right',
+  'closeup_front',
+  'closeup_left',
+  'closeup_right',
+];
+const CLOSEUP_SIDE: Record<string, ScanAngle> = {
+  closeup_front: 'front',
+  closeup_left: 'left',
+  closeup_right: 'right',
+};
+
+const POSED_COPY: Record<CaptureStep, { title: string; subtitle: string }> = {
   front: {
     title: 'Front view',
     subtitle: 'Face the camera and align within the oval',
@@ -50,6 +70,18 @@ const POSED_COPY: Record<ScanAngle, { title: string; subtitle: string }> = {
   right: {
     title: 'Right profile',
     subtitle: 'Turn to show your right cheek',
+  },
+  closeup_front: {
+    title: 'Close-up — front',
+    subtitle: 'Bring the camera close to your forehead and nose so pores are sharp',
+  },
+  closeup_left: {
+    title: 'Close-up — left',
+    subtitle: 'Move in close on your left cheek',
+  },
+  closeup_right: {
+    title: 'Close-up — right',
+    subtitle: 'Move in close on your right cheek',
   },
 };
 
@@ -65,6 +97,10 @@ export function ScanScreen({ navigation }: Props) {
   const [burstFrames, setBurstFrames] = useState<string[]>([]);
   const [posedStep, setPosedStep] = useState(0);
   const [posedCaptures, setPosedCaptures] = useState<Partial<ScanImages>>({});
+  const [closeupCaptures, setCloseupCaptures] = useState<
+    Partial<Record<ScanAngle, string>>
+  >({});
+  const [frozenFrame, setFrozenFrame] = useState<string | null>(null);
   const [isCapturingPosed, setIsCapturingPosed] = useState(false);
   const [gateHint, setGateHint] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -94,8 +130,9 @@ export function ScanScreen({ navigation }: Props) {
     cancel,
   } = useFaceIdScanSequence({ takePicture });
 
-  const currentAngle = SCAN_ANGLES[posedStep]!;
-  const posedCopy = POSED_COPY[currentAngle];
+  const currentStep = CAPTURE_STEPS[posedStep]!;
+  const isCloseup = currentStep.startsWith('closeup');
+  const posedCopy = POSED_COPY[currentStep];
   const limitReached =
     quota?.plan === 'free' && quota.limit > 0 && quota.remaining <= 0;
   const busy =
@@ -116,6 +153,8 @@ export function ScanScreen({ navigation }: Props) {
     setBurstFrames([]);
     setPosedStep(0);
     setPosedCaptures({});
+    setCloseupCaptures({});
+    setFrozenFrame(null);
     setIsCapturingPosed(false);
     setInstruction('Align your face in the oval, then start');
   }
@@ -148,6 +187,7 @@ export function ScanScreen({ navigation }: Props) {
   async function finishAndAnalyze(
     burst: string[],
     posed: ScanImages,
+    closeups: Partial<Record<ScanAngle, string>>,
   ) {
     setFlowPhase('analyzing');
     setInstruction('Analyzing your skin…');
@@ -161,7 +201,7 @@ export function ScanScreen({ navigation }: Props) {
       }
     }
 
-    const result = await submitHybridScan(croppedBurst, posed);
+    const result = await submitHybridScan(croppedBurst, posed, closeups);
     await refreshQuota();
 
     navigation.navigate('ScanResult', {
@@ -193,6 +233,7 @@ export function ScanScreen({ navigation }: Props) {
 
       setPosedStep(0);
       setPosedCaptures({});
+      setCloseupCaptures({});
       setFlowPhase('posed');
       setInstruction(POSED_COPY.front.subtitle);
     } catch (err) {
@@ -214,23 +255,40 @@ export function ScanScreen({ navigation }: Props) {
 
     try {
       const raw = await takePicture();
-      const cropped = await cropCaptureToFaceGuide(raw, currentAngle);
-      const nextCaptures = { ...posedCaptures, [currentAngle]: cropped };
-      setPosedCaptures(nextCaptures);
 
-      const isLast = posedStep >= SCAN_ANGLES.length - 1;
-      if (!isLast) {
-        const next = posedStep + 1;
-        setPosedStep(next);
-        setInstruction(POSED_COPY[SCAN_ANGLES[next]!]!.subtitle);
+      // Close-up: keep full detail (no face-oval crop). Front/left/right sides.
+      if (isCloseup) {
+        const side = CLOSEUP_SIDE[currentStep]!;
+        const nextCloseups = { ...closeupCaptures, [side]: raw };
+        setCloseupCaptures(nextCloseups);
+
+        const isLast = posedStep >= CAPTURE_STEPS.length - 1;
+        if (!isLast) {
+          const next = posedStep + 1;
+          setPosedStep(next);
+          setInstruction(POSED_COPY[CAPTURE_STEPS[next]!]!.subtitle);
+          return;
+        }
+
+        const posed = posedCaptures as ScanImages;
+        if (!posed.front || !posed.left || !posed.right) {
+          throw new Error('Missing posed photos');
+        }
+        await finishAndAnalyze(burstFrames, posed, nextCloseups);
         return;
       }
 
-      const posed = nextCaptures as ScanImages;
-      if (!posed.front || !posed.left || !posed.right) {
-        throw new Error('Missing posed photos');
+      const angle = currentStep as ScanAngle;
+      if (angle === 'front') {
+        setFrozenFrame(raw);
       }
-      await finishAndAnalyze(burstFrames, posed);
+      const cropped = await cropCaptureToFaceGuide(raw, angle);
+      const nextCaptures = { ...posedCaptures, [angle]: cropped };
+      setPosedCaptures(nextCaptures);
+
+      const next = posedStep + 1;
+      setPosedStep(next);
+      setInstruction(POSED_COPY[CAPTURE_STEPS[next]!]!.subtitle);
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
         setGateHint(
@@ -261,7 +319,7 @@ export function ScanScreen({ navigation }: Props) {
     if (posedStep <= 0 || isCapturingPosed) return;
     const prev = posedStep - 1;
     setPosedStep(prev);
-    setInstruction(POSED_COPY[SCAN_ANGLES[prev]!]!.subtitle);
+    setInstruction(POSED_COPY[CAPTURE_STEPS[prev]!]!.subtitle);
   }
 
   const showFaceIdOverlay =
@@ -284,7 +342,7 @@ export function ScanScreen({ navigation }: Props) {
       <CameraView ref={cameraRef} style={styles.camera} facing="front" />
 
       {flowPhase === 'analyzing' ? (
-        <AnalyzingMeshOverlay />
+        <AnalyzingMeshOverlay imageUri={frozenFrame} />
       ) : showFaceIdOverlay ? (
         <FaceIdScanOverlay
           progress={displayProgress}
@@ -293,11 +351,15 @@ export function ScanScreen({ navigation }: Props) {
         />
       ) : (
         <>
-          <FaceGuideOverlay angle={currentAngle} />
+          {isCloseup ? null : (
+            <FaceGuideOverlay angle={currentStep as ScanAngle} />
+          )}
           <View style={[styles.posedCopy, { top: insets.top + 88 }]} pointerEvents="none">
             <Text style={styles.posedTitle}>{posedCopy.title}</Text>
             <Text style={styles.posedSubtitle}>{posedCopy.subtitle}</Text>
-            <Text style={styles.posedStep}>Photo {posedStep + 1} of 3</Text>
+            <Text style={styles.posedStep}>
+              Photo {posedStep + 1} of {CAPTURE_STEPS.length}
+            </Text>
             {gateHint ? <Text style={styles.gateText}>{gateHint}</Text> : null}
           </View>
         </>
@@ -312,13 +374,13 @@ export function ScanScreen({ navigation }: Props) {
           <Text style={styles.title}>Face scan</Text>
           {flowPhase === 'posed' && (
             <View style={styles.stepDots}>
-              {SCAN_ANGLES.map((angle, index) => (
+              {CAPTURE_STEPS.map((stepId, index) => (
                 <View
-                  key={angle}
+                  key={stepId}
                   style={[
                     styles.stepDot,
                     index <= posedStep && styles.stepDotActive,
-                    posedCaptures[angle] && index < posedStep && styles.stepDotDone,
+                    index < posedStep && styles.stepDotDone,
                   ]}
                 />
               ))}
@@ -391,7 +453,9 @@ export function ScanScreen({ navigation }: Props) {
         )}
 
         {flowPhase === 'posed' && !isCapturingPosed ? (
-          <Text style={styles.hint}>Align, then tap to capture</Text>
+          <Text style={styles.hint}>
+            {isCloseup ? 'Hold close and steady, then tap' : 'Align, then tap to capture'}
+          </Text>
         ) : null}
         {flowPhase === 'sweeping' ? (
           <Text style={styles.hint}>Keep moving slowly around the circle</Text>

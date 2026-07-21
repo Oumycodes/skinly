@@ -72,11 +72,14 @@ On a physical device, set `EXPO_PUBLIC_API_URL` to your machine's LAN IP.
 
 #### Google sign-in (onboarding)
 
-1. In Supabase → **Authentication → Providers → Google**, enable Google and add your Google OAuth client IDs.
-2. In Supabase → **Authentication → URL Configuration**, add redirect URL:
-   - `skins://auth/callback`
-   - For Expo Go, also add the `exp://…` URL shown when you start the app (from `Linking.createURL('auth/callback')`).
-3. In Google Cloud Console, add the same redirect URIs to your OAuth client.
+1. In Supabase → **Authentication → Providers → Google**, enable Google and paste your Google Cloud OAuth **Web** client ID + secret.
+2. In Supabase → **Authentication → URL Configuration**:
+   - **Site URL:** `https://YOUR_PROJECT.supabase.co` (do **not** use `skins://` here — that causes “address is invalid” in Expo Go)
+   - **Redirect URLs** add:
+     - `skins://auth/callback` (standalone / production builds)
+     - The `exp://…/--/auth/callback` URL shown on the onboarding screen in `__DEV__` (Expo Go). Each device/LAN IP can differ — copy the exact string from the app.
+3. In Google Cloud Console → OAuth client → **Authorized redirect URIs**:
+   - `https://YOUR_PROJECT.supabase.co/auth/v1/callback`
 
 ## API endpoints
 
