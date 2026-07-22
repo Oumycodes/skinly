@@ -189,6 +189,7 @@ export function RoutineScreen() {
                 {doneCount}/{total} done
               </Text>
             </View>
+            <View style={styles.stepsList}>
             {todaysProducts.map((product) => {
               const checked = doneToday.has(product.id);
               return (
@@ -218,6 +219,7 @@ export function RoutineScreen() {
                 </Pressable>
               );
             })}
+            </View>
           </>
         ) : (
           <View style={styles.emptyCard}>
@@ -304,6 +306,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textSecondary,
   },
+  stepsList: {
+    gap: 8,
+    marginTop: 10,
+  },
   stepRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -311,7 +317,6 @@ const styles = StyleSheet.create({
     ...cardChrome,
     borderRadius: radii.sm,
     padding: 12,
-    marginTop: 8,
   },
   stepThumb: {
     width: 40,
