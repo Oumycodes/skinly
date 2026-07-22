@@ -1,21 +1,31 @@
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useMemo, useState } from 'react';
+import {
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, Polyline } from 'react-native-svg';
+import Svg, { Circle, Defs, LinearGradient, Path, Stop } from 'react-native-svg';
 
 import { colors, radii } from '../../constants/colors';
 import { spacing } from '../../constants/spacing';
 import { font, type } from '../../constants/typography';
 import type { ScanDetail } from '../../services/dashboard';
-import type { UsageTime } from '../../services/products';
 import { shortenProductName } from '../../utils/productName';
 import {
   buildOverallTrialSeries,
   buildTrialMeasureSeries,
-  type MeasureSeries,
   type MeasureSeriesPoint,
   type ProductTracking,
-  type TrackingStatus,
 } from '../../utils/productTracking';
+
+const UP = '#2E8B57';
+const DOWN = '#C4544F';
+const FLAT = '#78716C';
 
 interface ProductTrackingDetailSheetProps {
   tracking: ProductTracking | null;
@@ -23,22 +33,11 @@ interface ProductTrackingDetailSheetProps {
   onClose: () => void;
 }
 
-const STATUS_STYLE: Record<TrackingStatus, { bg: string; color: string }> = {
-  working: { bg: '#E8F3E8', color: '#3F6B3F' },
-  on_track: { bg: '#F5EFD8', color: '#8A6E2F' },
-  check_this: { bg: '#FCE8E8', color: '#B04A4A' },
-};
-
-const USAGE_LABEL: Record<UsageTime, string> = {
-  morning: 'Morning',
-  night: 'Night',
-  both: 'AM · PM',
-};
-
-function deltaLabel(delta: number | null): string {
-  if (delta == null) return '—';
-  const sign = delta > 0 ? '+' : '';
-  return `${sign}${delta.toFixed(1)}`;
+interface MetricOption {
+  id: string;
+  label: string;
+  points: MeasureSeriesPoint[];
+  delta: number | null;
 }
 
 function summaryCopy(tracking: ProductTracking): string {
@@ -46,111 +45,75 @@ function summaryCopy(tracking: ProductTracking): string {
   if (tracking.product.tracking_enabled === false) {
     return 'This product is on your shelf but not being tracked against scans.';
   }
-  if (tracking.startScore != null && tracking.latestScore != null && tracking.delta != null) {
-    const label = tracking.targetLabel.toLowerCase();
-    if (tracking.delta >= 0.3) {
-      return `${label} improved from ${tracking.startScore.toFixed(1)} → ${tracking.latestScore.toFixed(1)} across ${tracking.scanCount} scan${tracking.scanCount === 1 ? '' : 's'}. Looking promising.`;
-    }
-    if (tracking.delta <= -0.3) {
-      return `${label} moved from ${tracking.startScore.toFixed(1)} → ${tracking.latestScore.toFixed(1)}. Worth reviewing this trial.`;
-    }
-    return `${label} held steady (${tracking.startScore.toFixed(1)} → ${tracking.latestScore.toFixed(1)}). Keep using it consistently.`;
-  }
-  return 'Take a few scans during this trial to see how hydration, calmness, and other measures change.';
+  return 'Keep using this product daily — log scans over the coming weeks to monitor changes.';
 }
 
-function MeasureChart({
-  title,
-  points,
-  delta,
-  accent = colors.dark,
-}: {
-  title: string;
-  points: MeasureSeriesPoint[];
-  delta: number | null;
-  accent?: string;
-}) {
-  const width = 300;
-  const height = 88;
-  const padX = 8;
-  const padY = 12;
+function TrendChart({ points, color }: { points: MeasureSeriesPoint[]; color: string }) {
+  const width = 320;
+  const height = 128;
+  const padX = 10;
+  const padTop = 12;
+  const padBottom = 20;
   const chartW = width - padX * 2;
-  const chartH = height - padY * 2;
+  const chartH = height - padTop - padBottom;
+
+  if (points.length < 2) {
+    return (
+      <View style={styles.chartEmpty}>
+        <Text style={styles.chartEmptyText}>
+          {points.length === 1
+            ? 'One more scan to chart this'
+            : 'Scan during the trial to see your trend'}
+        </Text>
+      </View>
+    );
+  }
 
   const scores = points.map((p) => p.score);
-  const min = scores.length ? Math.max(0, Math.min(...scores) - 0.8) : 0;
-  const max = scores.length ? Math.min(10, Math.max(...scores) + 0.8) : 10;
+  const min = Math.max(0, Math.min(...scores) - 0.8);
+  const max = Math.min(10, Math.max(...scores) + 0.8);
   const range = max - min || 1;
 
-  const polyline =
-    points.length > 1
-      ? points
-          .map((p, i) => {
-            const x = padX + (i / (points.length - 1)) * chartW;
-            const y = padY + chartH - ((p.score - min) / range) * chartH;
-            return `${x},${y}`;
-          })
-          .join(' ')
-      : '';
-
-  const last = points.length > 0 ? points[points.length - 1] : null;
-  const lastXY =
-    last && points.length > 1
-      ? {
-          x: padX + chartW,
-          y: padY + chartH - ((last.score - min) / range) * chartH,
-        }
-      : null;
-
-  const deltaColor =
-    delta == null ? colors.textMuted : delta >= 0 ? '#3F6B3F' : '#B04A4A';
+  const xy = points.map((p, i) => ({
+    x: padX + (i / (points.length - 1)) * chartW,
+    y: padTop + chartH - ((p.score - min) / range) * chartH,
+  }));
+  const line = xy.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ');
+  const area = `${line} L ${xy[xy.length - 1].x} ${padTop + chartH} L ${xy[0].x} ${padTop + chartH} Z`;
+  const lastPt = xy[xy.length - 1];
 
   return (
-    <View style={styles.chartCard}>
-      <View style={styles.chartHeader}>
-        <Text style={styles.chartTitle}>{title}</Text>
-        <Text style={[styles.chartDelta, { color: deltaColor }]}>{deltaLabel(delta)}</Text>
-      </View>
-
-      {points.length >= 2 ? (
-        <>
-          <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
-            <Polyline
-              points={polyline}
-              fill="none"
-              stroke={accent}
-              strokeWidth={2.5}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {lastXY ? (
-              <Circle cx={lastXY.x} cy={lastXY.y} r={4} fill={accent} />
-            ) : null}
-          </Svg>
-          <View style={styles.axis}>
-            <Text style={styles.axisLabel}>Day {points[0].day}</Text>
-            <Text style={styles.axisLabel}>Day {points[points.length - 1].day}</Text>
-          </View>
-        </>
-      ) : (
-        <View style={styles.chartEmpty}>
-          <Text style={styles.chartEmptyText}>
-            {points.length === 1
-              ? 'Need one more scan to chart this'
-              : 'No scans in this trial yet'}
-          </Text>
-        </View>
-      )}
-
-      {points.length >= 1 ? (
-        <Text style={styles.chartMeta}>
-          {points[0].score.toFixed(1)}
-          {points.length > 1 ? ` → ${points[points.length - 1].score.toFixed(1)}` : ''}
-          {' · '}
-          {points.length} scan{points.length === 1 ? '' : 's'}
+    <>
+      <Svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`}>
+        <Defs>
+          <LinearGradient id="trend" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={color} stopOpacity="0.26" />
+            <Stop offset="1" stopColor={color} stopOpacity="0" />
+          </LinearGradient>
+        </Defs>
+        <Path d={area} fill="url(#trend)" />
+        <Path
+          d={line}
+          fill="none"
+          stroke={color}
+          strokeWidth={2.6}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <Circle cx={lastPt.x} cy={lastPt.y} r={5.5} fill="#FFFFFF" />
+        <Circle cx={lastPt.x} cy={lastPt.y} r={3.5} fill={color} />
+      </Svg>
+      <View style={styles.axis}>
+        <Text style={styles.axisLabel}>
+          {points[0].day === 0 ? 'Start' : `Day ${points[0].day}`}
         </Text>
-      ) : null}
-    </View>
+        <Text style={styles.axisLabel}>
+          {points[points.length - 1].day === 0
+            ? 'Start'
+            : `Day ${points[points.length - 1].day}`}
+        </Text>
+      </View>
+    </>
   );
 }
 
@@ -160,26 +123,41 @@ export function ProductTrackingDetailSheet({
   onClose,
 }: ProductTrackingDetailSheetProps) {
   const insets = useSafeAreaInsets();
+  const [selectedId, setSelectedId] = useState('overall');
+
+  const isTracking = tracking?.product.tracking_enabled !== false;
+
+  const options: MetricOption[] = useMemo(() => {
+    if (!tracking || !isTracking) return [];
+    const overall = buildOverallTrialSeries(tracking.product, history, tracking.trialDays);
+    const overallDelta =
+      overall.length >= 2
+        ? Math.round((overall[overall.length - 1].score - overall[0].score) * 10) / 10
+        : null;
+    const measures = buildTrialMeasureSeries(tracking.product, history, tracking.trialDays);
+    return [
+      { id: 'overall', label: 'Overall', points: overall, delta: overallDelta },
+      ...measures.map((m) => ({
+        id: m.id,
+        label: m.label,
+        points: m.points,
+        delta: m.delta,
+      })),
+    ];
+  }, [tracking, history, isTracking]);
+
   if (!tracking) return null;
 
-  const isTracking = tracking.product.tracking_enabled !== false;
-  const statusStyle = STATUS_STYLE[tracking.status];
-  const usageTime = tracking.product.usage_time;
-  const timesPerWeek = tracking.product.times_per_week;
   const title = shortenProductName(tracking.product.name, tracking.product.brand);
+  const daysLeft = Math.max(0, tracking.trialDays - tracking.day);
+  const selected = options.find((o) => o.id === selectedId) ?? options[0] ?? null;
 
-  const measureSeries: MeasureSeries[] = isTracking
-    ? buildTrialMeasureSeries(tracking.product, history, tracking.trialDays)
-    : [];
-  const overallPoints = isTracking
-    ? buildOverallTrialSeries(tracking.product, history, tracking.trialDays)
-    : [];
-  const overallDelta =
-    overallPoints.length >= 2
-      ? Math.round(
-          (overallPoints[overallPoints.length - 1].score - overallPoints[0].score) * 10,
-        ) / 10
-      : null;
+  const selectedColor =
+    selected?.delta == null || selected.delta === 0
+      ? FLAT
+      : selected.delta > 0
+        ? UP
+        : DOWN;
 
   return (
     <Modal visible animationType="slide" transparent onRequestClose={onClose}>
@@ -209,77 +187,64 @@ export function ProductTrackingDetailSheet({
                 {tracking.product.brand ? (
                   <Text style={styles.brand}>{tracking.product.brand}</Text>
                 ) : null}
-                <Text style={styles.dayLine}>
-                  {isTracking
-                    ? `Day ${tracking.day} of ${tracking.trialDays}`
-                    : 'On shelf · not tracking'}
-                </Text>
               </View>
               <Pressable onPress={onClose} hitSlop={10}>
                 <Text style={styles.close}>✕</Text>
               </Pressable>
             </View>
 
-            <View style={styles.badgeRow}>
-              {isTracking ? (
-                <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
-                  <Text style={[styles.statusText, { color: statusStyle.color }]}>
-                    {tracking.statusLabel}
+            {isTracking ? (
+              <View style={styles.hero}>
+                <View>
+                  <Text style={styles.heroLabel}>YOUR TRIAL</Text>
+                  <Text style={styles.heroDay}>Day {tracking.day}</Text>
+                  <Text style={styles.heroSub}>
+                    {daysLeft > 0 ? `${daysLeft} days left` : 'Trial complete'}
                   </Text>
                 </View>
-              ) : null}
-              {usageTime ? (
-                <View style={styles.usageBadge}>
-                  <Text style={styles.usageText}>{USAGE_LABEL[usageTime]}</Text>
-                </View>
-              ) : null}
-              {timesPerWeek ? (
-                <View style={styles.usageBadge}>
-                  <Text style={styles.usageText}>{timesPerWeek}× / week</Text>
-                </View>
-              ) : null}
-            </View>
 
-            {isTracking ? (
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${tracking.progress * 100}%` }]} />
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${Math.min(1, tracking.progress) * 100}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.progressLabel}>
+                  Day {tracking.day} of {tracking.trialDays}
+                </Text>
+              </View>
+            ) : null}
+
+            {isTracking && selected ? (
+              <View style={styles.chartCard}>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chips}
+                >
+                  {options.map((opt) => {
+                    const active = opt.id === selectedId;
+                    return (
+                      <Pressable
+                        key={opt.id}
+                        onPress={() => setSelectedId(opt.id)}
+                        style={[styles.chip, active && styles.chipActive]}
+                      >
+                        <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                          {opt.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+
+                <TrendChart points={selected.points} color={selectedColor} />
               </View>
             ) : null}
 
             <Text style={styles.summary}>{summaryCopy(tracking)}</Text>
-            {tracking.aiAdvice ? (
-              <Text style={styles.advice}>{tracking.aiAdvice}</Text>
-            ) : null}
-
-            {isTracking ? (
-              <>
-                <Text style={styles.sectionTitle}>Skin score</Text>
-                <MeasureChart
-                  title="Overall"
-                  points={overallPoints}
-                  delta={overallDelta}
-                  accent={colors.primary}
-                />
-
-                <Text style={styles.sectionTitle}>Measures this trial</Text>
-                <Text style={styles.sectionHint}>
-                  Dryness, redness, and more across the days you used this product.
-                </Text>
-                {measureSeries.map((series) => (
-                  <MeasureChart
-                    key={series.id}
-                    title={series.label}
-                    points={series.points}
-                    delta={series.delta}
-                    accent={
-                      tracking.targetMeasures.includes(series.id)
-                        ? colors.dark
-                        : colors.textSecondary
-                    }
-                  />
-                ))}
-              </>
-            ) : null}
           </ScrollView>
 
           <Pressable style={styles.closeBtn} onPress={onClose}>
@@ -337,7 +302,7 @@ const styles = StyleSheet.create({
   },
   headerMeta: {
     flex: 1,
-    gap: 2,
+    gap: 4,
     paddingTop: 2,
   },
   name: {
@@ -348,96 +313,126 @@ const styles = StyleSheet.create({
   brand: {
     ...type.bodySmall,
   },
-  dayLine: {
-    ...font.medium,
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
   close: {
     fontSize: 16,
     color: colors.textMuted,
     paddingTop: 2,
   },
-  badgeRow: {
+  hero: {
+    borderRadius: radii.lg,
+    padding: spacing.screen,
+    marginTop: 4,
+    backgroundColor: colors.primaryLight,
+    gap: 12,
+  },
+  heroTop: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
-  statusBadge: {
-    borderRadius: radii.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  statusText: {
+  heroLabel: {
     ...font.semibold,
-    fontSize: 10,
-    letterSpacing: 0.5,
+    fontSize: 11,
+    letterSpacing: 1,
+    color: colors.primaryDark,
   },
-  usageBadge: {
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radii.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+  heroDay: {
+    ...font.bold,
+    fontSize: 32,
+    lineHeight: 34,
+    letterSpacing: -0.5,
+    color: colors.text,
   },
-  usageText: {
+  heroSub: {
+    ...font.medium,
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  heroChangeCol: {
+    alignItems: 'flex-end',
+    gap: 3,
+    paddingTop: 2,
+  },
+  heroChangeLabel: {
     ...font.medium,
     fontSize: 11,
     color: colors.textSecondary,
   },
+  changeLg: {
+    ...font.bold,
+    fontSize: 18,
+  },
+  changeSm: {
+    ...font.semibold,
+    fontSize: 13,
+  },
   progressTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.border,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(0,0,0,0.08)',
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
-    borderRadius: 3,
-    backgroundColor: colors.dark,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
   },
-  summary: {
-    ...type.body,
+  progressLabel: {
+    ...type.caption,
     color: colors.textSecondary,
   },
-  advice: {
+  chartCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderCard,
+    padding: 16,
+    gap: 10,
+    shadowColor: colors.textMuted,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  chips: {
+    gap: 8,
+    paddingRight: 4,
+  },
+  chip: {
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.surface,
+  },
+  chipActive: {
+    backgroundColor: colors.dark,
+    borderColor: colors.dark,
+  },
+  chipText: {
+    ...font.medium,
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  chipTextActive: {
+    color: colors.surface,
+  },
+  chartValueRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+  },
+  chartValue: {
+    ...font.bold,
+    fontSize: 30,
+    letterSpacing: -0.5,
+    color: colors.text,
+  },
+  chartValueMax: {
     ...font.medium,
     fontSize: 14,
-    color: colors.text,
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radii.md,
-    padding: 12,
-    overflow: 'hidden',
-  },
-  sectionTitle: {
-    ...font.semibold,
-    fontSize: 16,
-    color: colors.text,
-    marginTop: spacing.inner,
-  },
-  sectionHint: {
-    ...type.bodySmall,
-    marginTop: -6,
-  },
-  chartCard: {
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radii.md,
-    padding: 14,
-    gap: 6,
-  },
-  chartHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  chartTitle: {
-    ...font.semibold,
-    fontSize: 14,
-    color: colors.text,
-  },
-  chartDelta: {
-    ...font.semibold,
-    fontSize: 14,
+    color: colors.textMuted,
   },
   axis: {
     flexDirection: 'row',
@@ -449,7 +444,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   chartEmpty: {
-    height: 72,
+    height: 96,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -457,8 +452,8 @@ const styles = StyleSheet.create({
     ...type.bodySmall,
     textAlign: 'center',
   },
-  chartMeta: {
-    ...type.caption,
+  summary: {
+    ...type.body,
     color: colors.textSecondary,
   },
   closeBtn: {

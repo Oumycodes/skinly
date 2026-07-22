@@ -32,14 +32,48 @@ import { layout } from '../constants/layout';
 import { spacing } from '../constants/spacing';
 import { font, type } from '../constants/typography';
 import { useShelf } from '../hooks/useShelf';
-import { getScanHistoryDetail, type ScanDetail } from '../services/dashboard';
+import { type ScanDetail } from '../services/dashboard';
+import {
+  getCachedScanHistory,
+  loadScanHistory,
+} from '../services/scanHistoryCache';
 import { identifyProduct, searchProducts, getTrackingInsights, type TrackingInsight } from '../services/products';
+import { setProductSchedule, removeProductSchedule } from '../services/productSchedule';
 import { shortenProductName } from '../utils/productName';
+import { guessCategory, type ProductCategory } from '../utils/productCategory';
 import {
   applyTrackingInsights,
   buildProductTracking,
   type ProductTracking,
 } from '../utils/productTracking';
+
+const CATEGORY_ORDER: ProductCategory[] = [
+  'cleanser',
+  'serum',
+  'moisturizer',
+  'spf',
+  'other',
+];
+
+function categoryLabel(category: ProductCategory): string {
+  if (category === 'spf') return 'SPF';
+  return category.charAt(0).toUpperCase() + category.slice(1);
+}
+
+function groupByCategory(
+  items: ProductTracking[],
+): Array<{ category: ProductCategory; items: ProductTracking[] }> {
+  const byCat = new Map<ProductCategory, ProductTracking[]>();
+  for (const item of items) {
+    const cat = guessCategory(item.product.name, item.product.ingredients);
+    if (!byCat.has(cat)) byCat.set(cat, []);
+    byCat.get(cat)!.push(item);
+  }
+  return CATEGORY_ORDER.filter((c) => byCat.has(c)).map((category) => ({
+    category,
+    items: byCat.get(category)!,
+  }));
+}
 
 const DISMISSED_CHECKINS_KEY = '@skins/dismissed_product_checkins';
 
@@ -48,8 +82,12 @@ export function ShelfScreen() {
   const { products, loading, error, addProduct, removeProduct, refresh } =
     useShelf();
 
-  const [history, setHistory] = useState<ScanDetail[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
+  const [history, setHistory] = useState<ScanDetail[]>(
+    () => getCachedScanHistory() ?? [],
+  );
+  const [historyLoading, setHistoryLoading] = useState(
+    () => getCachedScanHistory() == null,
+  );
   const [pullRefreshing, setPullRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showAdd, setShowAdd] = useState(false);
@@ -65,13 +103,14 @@ export function ShelfScreen() {
   const [dismissedCheckIns, setDismissedCheckIns] = useState<Set<string>>(new Set());
   const [selectedCheckIn, setSelectedCheckIn] = useState<ProductTracking | null>(null);
   const [trackingInsights, setTrackingInsights] = useState<TrackingInsight[]>([]);
+  const [categoryFilter, setCategoryFilter] = useState<ProductCategory | 'all'>('all');
 
-  const loadHistory = useCallback(async () => {
-    setHistoryLoading(true);
+  const loadHistory = useCallback(async (force = false) => {
+    if (getCachedScanHistory() == null) setHistoryLoading(true);
     try {
-      setHistory(await getScanHistoryDetail(90));
+      setHistory(await loadScanHistory(90, force));
     } catch {
-      setHistory([]);
+      if (getCachedScanHistory() == null) setHistory([]);
     } finally {
       setHistoryLoading(false);
     }
@@ -115,6 +154,11 @@ export function ShelfScreen() {
     [products, history, trackingInsights],
   );
 
+  const shelfGroups = useMemo(
+    () => groupByCategory(trackingList),
+    [trackingList],
+  );
+
   const checkIn = useMemo(() => {
     return (
       trackingList.find(
@@ -138,7 +182,7 @@ export function ShelfScreen() {
     try {
       await Promise.all([
         refresh({ silent: true }),
-        loadHistory(),
+        loadHistory(true),
         loadTrackingInsights(),
       ]);
     } finally {
@@ -220,12 +264,13 @@ export function ShelfScreen() {
     setAdding(true);
     setActionError(null);
     try {
-      await addProduct(pendingProduct.product, pendingProduct.source, {
+      const saved = await addProduct(pendingProduct.product, pendingProduct.source, {
         trackingEnabled: result.trackingEnabled,
         trialDays: result.trackingEnabled ? result.trialDays ?? 28 : null,
         usageTime: result.usageTime,
         timesPerWeek: result.timesPerWeek,
       });
+      await setProductSchedule(saved.id, result.days);
       setPendingProduct(null);
       setTrackStep('usage');
       void loadTrackingInsights();
@@ -302,14 +347,60 @@ export function ShelfScreen() {
             </Pressable>
           </View>
         ) : (
-          trackingList.map((item) => (
-            <TrackingProductCard
-              key={item.product.id}
-              tracking={item}
-              onPress={() => setSelectedCheckIn(item)}
-              onRemove={(id) => void removeProduct(id)}
-            />
-          ))
+          <>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.filterRow}
+            >
+              {[
+                { key: 'all' as const, label: 'All' },
+                ...shelfGroups.map((g) => ({
+                  key: g.category,
+                  label: categoryLabel(g.category),
+                })),
+              ].map((tab) => {
+                const active = categoryFilter === tab.key;
+                return (
+                  <Pressable
+                    key={tab.key}
+                    onPress={() => setCategoryFilter(tab.key)}
+                    style={[styles.filterPill, active && styles.filterPillActive]}
+                  >
+                    <Text
+                      style={[
+                        styles.filterPillText,
+                        active && styles.filterPillTextActive,
+                      ]}
+                    >
+                      {tab.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {shelfGroups
+              .filter(
+                (group) =>
+                  categoryFilter === 'all' || group.category === categoryFilter,
+              )
+              .map((group) => (
+                <View key={group.category} style={styles.catGroup}>
+                  {group.items.map((item) => (
+                    <TrackingProductCard
+                      key={item.product.id}
+                      tracking={item}
+                      onPress={() => setSelectedCheckIn(item)}
+                      onRemove={(id) => {
+                        void removeProductSchedule(id);
+                        void removeProduct(id);
+                      }}
+                    />
+                  ))}
+                </View>
+              ))}
+          </>
         )}
       </ScrollView>
 
@@ -471,6 +562,36 @@ const styles = StyleSheet.create({
   list: {
     paddingHorizontal: spacing.screen,
     gap: spacing.item,
+  },
+  catGroup: {
+    gap: spacing.item,
+    marginTop: spacing.item,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 10,
+    paddingVertical: 4,
+    paddingRight: spacing.screen,
+  },
+  filterPill: {
+    paddingHorizontal: 20,
+    paddingVertical: 11,
+    borderRadius: radii.full,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  filterPillActive: {
+    backgroundColor: colors.dark,
+    borderColor: colors.dark,
+  },
+  filterPillText: {
+    ...font.semibold,
+    fontSize: 15,
+    color: colors.textSecondary,
+  },
+  filterPillTextActive: {
+    color: colors.surface,
   },
   headerBlock: {
     gap: spacing.titleBelow,

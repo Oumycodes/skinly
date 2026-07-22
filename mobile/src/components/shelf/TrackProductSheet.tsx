@@ -31,7 +31,20 @@ export type TrackAddResult = {
   trialDays?: number;
   usageTime: UsageTime;
   timesPerWeek: number;
+  /** JS getDay() indices (0=Sun…6=Sat) the product is used on */
+  days: number[];
 };
+
+/** Display order Mon→Sun, values are JS getDay() indices */
+const WEEKDAYS: { index: number; label: string }[] = [
+  { index: 1, label: 'Mon' },
+  { index: 2, label: 'Tue' },
+  { index: 3, label: 'Wed' },
+  { index: 4, label: 'Thu' },
+  { index: 5, label: 'Fri' },
+  { index: 6, label: 'Sat' },
+  { index: 0, label: 'Sun' },
+];
 
 type Step = 'usage' | 'ask' | 'duration';
 
@@ -52,12 +65,12 @@ export function TrackProductSheet({
 }: TrackProductSheetProps) {
   const insets = useSafeAreaInsets();
   const [usageTime, setUsageTime] = useState<UsageTime>('both');
-  const [timesPerWeek, setTimesPerWeek] = useState(7);
+  const [days, setDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
 
   useEffect(() => {
     if (pending) {
       setUsageTime('both');
-      setTimesPerWeek(7);
+      setDays([0, 1, 2, 3, 4, 5, 6]);
     }
   }, [pending]);
 
@@ -67,12 +80,19 @@ export function TrackProductSheet({
   const title = shortenProductName(product.name, product.brand);
   const category = getCategoryLabel(guessCategory(product.name, product.ingredients));
 
+  function toggleDay(index: number) {
+    setDays((prev) =>
+      prev.includes(index) ? prev.filter((d) => d !== index) : [...prev, index],
+    );
+  }
+
   function finish(trackingEnabled: boolean, trialDays?: number) {
     onComplete({
       trackingEnabled,
       trialDays,
       usageTime,
-      timesPerWeek,
+      timesPerWeek: days.length,
+      days,
     });
   }
 
@@ -122,18 +142,18 @@ export function TrackProductSheet({
               </View>
 
               <View style={styles.section}>
-                <Text style={styles.sectionLabel}>Times per week</Text>
+                <Text style={styles.sectionLabel}>Which days do you use it?</Text>
                 <View style={styles.daysRow}>
-                  {[1, 2, 3, 4, 5, 6, 7].map((day) => {
-                    const selected = timesPerWeek === day;
+                  {WEEKDAYS.map((day) => {
+                    const selected = days.includes(day.index);
                     return (
                       <Pressable
-                        key={day}
+                        key={day.index}
                         style={[styles.dayCircle, selected && styles.dayCircleSelected]}
-                        onPress={() => setTimesPerWeek(day)}
+                        onPress={() => toggleDay(day.index)}
                       >
                         <Text style={[styles.dayText, selected && styles.dayTextSelected]}>
-                          {day}
+                          {day.label}
                         </Text>
                       </Pressable>
                     );
@@ -141,7 +161,11 @@ export function TrackProductSheet({
                 </View>
               </View>
 
-              <Pressable style={styles.primaryBtn} onPress={() => onStepChange('ask')}>
+              <Pressable
+                style={[styles.primaryBtn, days.length === 0 && styles.primaryBtnDisabled]}
+                onPress={() => days.length > 0 && onStepChange('ask')}
+                disabled={days.length === 0}
+              >
                 <Text style={styles.primaryBtnText}>Continue</Text>
               </Pressable>
             </>
@@ -291,9 +315,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   dayCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    flex: 1,
+    marginHorizontal: 2,
+    height: 44,
+    borderRadius: 12,
     borderWidth: 1.5,
     borderColor: colors.border,
     alignItems: 'center',
@@ -306,7 +331,7 @@ const styles = StyleSheet.create({
   },
   dayText: {
     ...font.medium,
-    fontSize: 15,
+    fontSize: 12,
     color: colors.text,
   },
   dayTextSelected: {
@@ -328,6 +353,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
     marginTop: spacing.inner,
+  },
+  primaryBtnDisabled: {
+    opacity: 0.4,
   },
   primaryBtnText: {
     ...font.semibold,

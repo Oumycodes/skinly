@@ -122,7 +122,7 @@ export const MEASURE_LIST_LABEL: Record<SkinMeasureId, string> = {
   acne: 'Clarity',
   barrier: 'Calmness',
   aging: 'Fine lines',
-  texture: 'Smoothness',
+  texture: 'Texture',
 };
 
 /** Front-facing focus zones */
@@ -469,7 +469,8 @@ export function buildMeasuresFromInsights(
       detail: detailParts.join('\n\n'),
       // healthScore is 0–100 so UI can show X.Y via /10
       healthScore: Math.max(1, Math.round(score10 * 10)),
-      recommendations: MEASURE_EXTRA_RECOMMENDATIONS[id] ?? [],
+      // Only recommend products when the metric actually needs help (< 7)
+      recommendations: score10 < 7 ? MEASURE_EXTRA_RECOMMENDATIONS[id] ?? [] : [],
       tips: suggestion ? [suggestion, ...meta.goodTips.slice(0, 2)] : meta.goodTips,
     };
   });

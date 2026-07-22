@@ -2,7 +2,6 @@ import type { ShelfProduct } from '../services/products';
 import type { ScanDetail } from '../services/dashboard';
 import {
   MEASURE_LIST_LABEL,
-  buildSkinMeasures,
   type SkinMeasureId,
 } from './skinMeasures';
 import { guessCategory, type ProductCategory } from './productCategory';
@@ -149,13 +148,43 @@ function daysBetween(from: Date, to: Date): number {
   return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
 }
 
+/** Skin-measure id → pipeline metric id used in metrics_smoothed */
+const MEASURE_TO_PIPELINE: Record<SkinMeasureId, string> = {
+  hydration: 'hydration',
+  oiliness: 'oil_balance',
+  acne: 'clarity',
+  barrier: 'calmness',
+  aging: 'fine_lines',
+  texture: 'smoothness',
+};
+
+/** Normalize any 0–10 / 0–100 score to a clean 0–10 value */
+function to10(raw: number): number {
+  const s = raw > 10 ? raw / 10 : raw;
+  return Math.round(Math.max(0, Math.min(10, s)) * 10) / 10;
+}
+
+/**
+ * Real per-metric score from a scan, straight from the pipeline outputs
+ * (metrics_smoothed → metric_insights → overall as last resort).
+ */
 export function scoreForMeasure(scan: ScanDetail, measureId: SkinMeasureId): number | null {
-  const measures = buildSkinMeasures(scan.conditions ?? []);
-  const match = measures.find((m) => m.id === measureId);
-  if (!match) {
-    return Math.round((scan.overall_score / 10) * 10) / 10;
+  const pipelineId = MEASURE_TO_PIPELINE[measureId];
+
+  const smoothed = scan.metrics_smoothed;
+  if (smoothed && typeof smoothed[pipelineId] === 'number') {
+    return to10(smoothed[pipelineId]);
   }
-  return Math.round((match.healthScore / 10) * 10) / 10;
+
+  const insight = scan.metric_insights?.find((m) => m.id === pipelineId);
+  if (insight && typeof insight.score === 'number') {
+    return to10(insight.score);
+  }
+
+  if (typeof scan.overall_score === 'number') {
+    return to10(scan.overall_score);
+  }
+  return null;
 }
 
 export interface MeasureSeriesPoint {
@@ -182,16 +211,34 @@ const ALL_MEASURES: SkinMeasureId[] = [
   'aging',
 ];
 
-/** Per-measure score series from product start through the trial window */
-export function buildTrialMeasureSeries(
+interface TrialWindow {
+  baseline: ScanDetail | null;
+  scans: ScanDetail[];
+  length: number;
+  started: Date;
+}
+
+/**
+ * Scans within the trial window, plus the most recent scan taken BEFORE the
+ * product was added as a day-0 baseline — so a single trial scan already
+ * charts a before→after line.
+ */
+function trialWindow(
   product: ShelfProduct,
   history: ScanDetail[],
   trialDays?: number,
-): MeasureSeries[] {
+): TrialWindow {
   const started = new Date(product.created_at);
   const length = trialDays ?? trialLengthForProduct(product);
   const end = new Date(started);
   end.setDate(end.getDate() + length);
+
+  const baseline =
+    history
+      .filter((scan) => new Date(scan.scanned_at) < started)
+      .sort(
+        (a, b) => new Date(b.scanned_at).getTime() - new Date(a.scanned_at).getTime(),
+      )[0] ?? null;
 
   const scans = history
     .filter((scan) => {
@@ -200,16 +247,43 @@ export function buildTrialMeasureSeries(
     })
     .sort((a, b) => new Date(a.scanned_at).getTime() - new Date(b.scanned_at).getTime());
 
+  return { baseline, scans, length, started };
+}
+
+function seriesPoint(
+  scan: ScanDetail,
+  score: number,
+  started: Date,
+  length: number,
+  isBaseline: boolean,
+): MeasureSeriesPoint {
+  return {
+    scannedAt: scan.scanned_at,
+    day: isBaseline
+      ? 0
+      : Math.min(length, Math.max(1, daysBetween(started, new Date(scan.scanned_at)) + 1)),
+    score,
+  };
+}
+
+/** Per-measure score series from product start (with baseline) through the trial */
+export function buildTrialMeasureSeries(
+  product: ShelfProduct,
+  history: ScanDetail[],
+  trialDays?: number,
+): MeasureSeries[] {
+  const { baseline, scans, length, started } = trialWindow(product, history, trialDays);
+  const sequence: Array<{ scan: ScanDetail; isBaseline: boolean }> = [
+    ...(baseline ? [{ scan: baseline, isBaseline: true }] : []),
+    ...scans.map((scan) => ({ scan, isBaseline: false })),
+  ];
+
   const targets = new Set(targetMeasuresForProduct(product));
 
   return ALL_MEASURES.map((id) => {
-    const points: MeasureSeriesPoint[] = scans.map((scan) => {
-      const score = scoreForMeasure(scan, id) ?? Math.round((scan.overall_score / 10) * 10) / 10;
-      return {
-        scannedAt: scan.scanned_at,
-        day: Math.min(length, Math.max(1, daysBetween(started, new Date(scan.scanned_at)) + 1)),
-        score,
-      };
+    const points: MeasureSeriesPoint[] = sequence.map(({ scan, isBaseline }) => {
+      const score = scoreForMeasure(scan, id) ?? to10(scan.overall_score);
+      return seriesPoint(scan, score, started, length, isBaseline);
     });
     const start = points.length > 0 ? points[0].score : null;
     const latest = points.length > 0 ? points[points.length - 1].score : null;
@@ -236,22 +310,15 @@ export function buildOverallTrialSeries(
   history: ScanDetail[],
   trialDays?: number,
 ): MeasureSeriesPoint[] {
-  const started = new Date(product.created_at);
-  const length = trialDays ?? trialLengthForProduct(product);
-  const end = new Date(started);
-  end.setDate(end.getDate() + length);
+  const { baseline, scans, length, started } = trialWindow(product, history, trialDays);
+  const sequence: Array<{ scan: ScanDetail; isBaseline: boolean }> = [
+    ...(baseline ? [{ scan: baseline, isBaseline: true }] : []),
+    ...scans.map((scan) => ({ scan, isBaseline: false })),
+  ];
 
-  return history
-    .filter((scan) => {
-      const at = new Date(scan.scanned_at);
-      return at >= started && at <= end;
-    })
-    .sort((a, b) => new Date(a.scanned_at).getTime() - new Date(b.scanned_at).getTime())
-    .map((scan) => ({
-      scannedAt: scan.scanned_at,
-      day: Math.min(length, Math.max(1, daysBetween(started, new Date(scan.scanned_at)) + 1)),
-      score: Math.round((scan.overall_score / 10) * 10) / 10,
-    }));
+  return sequence.map(({ scan, isBaseline }) =>
+    seriesPoint(scan, to10(scan.overall_score), started, length, isBaseline),
+  );
 }
 
 function statusFor(

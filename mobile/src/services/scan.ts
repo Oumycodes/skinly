@@ -1,4 +1,5 @@
 import { apiFetch, ApiError } from './api';
+import { invalidateScanHistory } from './scanHistoryCache';
 
 export type Severity = 'mild' | 'moderate' | 'severe';
 
@@ -190,10 +191,13 @@ export async function submitHybridScan(
   if (closeups?.left) appendImage(formData, 'closeup_left', closeups.left);
   if (closeups?.right) appendImage(formData, 'closeup_right', closeups.right);
 
-  return apiFetch<ScanResult>('/scan', {
+  const result = await apiFetch<ScanResult>('/scan', {
     method: 'POST',
     body: formData,
   });
+  // New scan → Progress/Shelf history is stale; force a refetch next time.
+  invalidateScanHistory();
+  return result;
 }
 
 export async function submitScan(images: ScanImages): Promise<ScanResult> {

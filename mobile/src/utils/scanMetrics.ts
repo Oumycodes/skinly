@@ -31,7 +31,7 @@ export const METRIC_LABELS: Record<PipelineMetricId, string> = {
   oil_balance: 'Oil balance',
   clarity: 'Clarity',
   calmness: 'Calmness',
-  smoothness: 'Smoothness',
+  smoothness: 'Texture',
   fine_lines: 'Fine lines',
 };
 

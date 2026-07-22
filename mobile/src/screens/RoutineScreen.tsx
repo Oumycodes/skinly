@@ -1,14 +1,7 @@
-import { useNavigation } from '@react-navigation/native';
-import { useState, useMemo } from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { SectionLabel } from '../components/ui/SectionLabel';
@@ -17,108 +10,148 @@ import { colors, radii } from '../constants/colors';
 import { layout } from '../constants/layout';
 import { spacing } from '../constants/spacing';
 import { font, type } from '../constants/typography';
-import { useRoutine } from '../hooks/useRoutine';
 import { useShelf } from '../hooks/useShelf';
-import type { Period, RoutineStep } from '../services/routine';
+import type { ShelfProduct, UsageTime } from '../services/products';
+import { useProductSchedules } from '../services/productSchedule';
 import {
-  getCategoryColor,
   getCategoryLabel,
   guessCategory,
+  type ProductCategory,
 } from '../utils/productCategory';
 
-function stepsFromProductIds(
-  products: ReturnType<typeof useShelf>['products'],
-  ids: Set<string>,
-): RoutineStep[] {
-  const selected = products.filter((p) => ids.has(p.id));
-  const ordered = [...selected].sort((a, b) => {
-    const ca = guessCategory(a.name, a.ingredients);
-    const cb = guessCategory(b.name, b.ingredients);
-    const order = ['cleanser', 'toner', 'serum', 'moisturizer', 'spf', 'other'];
-    return order.indexOf(ca) - order.indexOf(cb);
-  });
+type Period = 'AM' | 'PM';
 
-  return ordered.map((p, i) => ({
-    order: i + 1,
-    product_id: p.id,
-    product_name: p.name,
-    brand: p.brand,
-    category: guessCategory(p.name, p.ingredients),
-    reason: `Your ${guessCategory(p.name, p.ingredients)} step.`,
-  }));
+const USAGE_LABEL: Record<UsageTime, string> = {
+  morning: 'Morning',
+  night: 'Night',
+  both: 'AM · PM',
+};
+
+const CATEGORY_ORDER: ProductCategory[] = [
+  'cleanser',
+  'serum',
+  'moisturizer',
+  'spf',
+  'other',
+];
+
+const WEEKDAY_NAMES = [
+  'Sunday',
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+];
+
+function todayKey(): string {
+  const d = new Date();
+  const m = `${d.getMonth() + 1}`.padStart(2, '0');
+  const day = `${d.getDate()}`.padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+function doneStorageKey(period: Period): string {
+  return `@skins/routine_done/${period}/${todayKey()}`;
+}
+
+function matchesPeriod(product: ShelfProduct, period: Period): boolean {
+  const t = product.usage_time;
+  if (!t) return true; // unspecified → show in both
+  if (period === 'AM') return t === 'morning' || t === 'both';
+  return t === 'night' || t === 'both';
 }
 
 export function RoutineScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const { products, loading: shelfLoading } = useShelf();
+  const { products, refresh: refreshShelf } = useShelf();
+  const { schedules, refresh: refreshSchedules } = useProductSchedules();
   const [period, setPeriod] = useState<Period>('AM');
-  const { routine, loading, saving, error, autoBuild, save, setRoutine } = useRoutine(period);
+  const [doneToday, setDoneToday] = useState<Set<string>>(new Set());
 
-  const selectedIds = useMemo(
-    () => new Set(routine?.steps.map((s) => s.product_id) ?? []),
-    [routine?.steps],
+  const todayWeekday = new Date().getDay();
+  const todayName = WEEKDAY_NAMES[todayWeekday];
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshShelf({ silent: true });
+      void refreshSchedules();
+    }, [refreshShelf, refreshSchedules]),
   );
 
-  const hasSpf = routine?.steps.some((s) => s.category === 'spf') ?? false;
-  const showSpfAlert = period === 'AM' && routine && routine.steps.length > 0 && !hasSpf;
+  // Products scheduled for today + this period, in routine order
+  const todaysProducts = useMemo(() => {
+    return products
+      .filter((p) => {
+        const sched = schedules[p.id];
+        const scheduledToday = sched ? sched.includes(todayWeekday) : true;
+        return scheduledToday && matchesPeriod(p, period);
+      })
+      .sort((a, b) => {
+        const ca = guessCategory(a.name, a.ingredients);
+        const cb = guessCategory(b.name, b.ingredients);
+        return CATEGORY_ORDER.indexOf(ca) - CATEGORY_ORDER.indexOf(cb);
+      });
+  }, [products, schedules, period, todayWeekday]);
 
-  function toggleProduct(id: string) {
-    const next = new Set(selectedIds);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-
-    const steps = stepsFromProductIds(products, next);
-    setRoutine({
-      period,
-      steps,
-      status: period === 'AM' && !steps.some((s) => s.category === 'spf') ? 'INCOMPLETE' : steps.length ? 'READY' : 'INCOMPLETE',
+  useEffect(() => {
+    let active = true;
+    void AsyncStorage.getItem(doneStorageKey(period)).then((raw) => {
+      if (!active) return;
+      try {
+        setDoneToday(new Set(raw ? (JSON.parse(raw) as string[]) : []));
+      } catch {
+        setDoneToday(new Set());
+      }
     });
+    return () => {
+      active = false;
+    };
+  }, [period]);
+
+  const toggleDone = useCallback(
+    (productId: string) => {
+      setDoneToday((prev) => {
+        const next = new Set(prev);
+        if (next.has(productId)) next.delete(productId);
+        else next.add(productId);
+        void AsyncStorage.setItem(doneStorageKey(period), JSON.stringify([...next]));
+        return next;
+      });
+    },
+    [period],
+  );
+
+  function usageLine(product: ShelfProduct): string {
+    const parts: string[] = [getCategoryLabel(guessCategory(product.name, product.ingredients))];
+    if (product.usage_time) parts.push(USAGE_LABEL[product.usage_time]);
+    return parts.join(' · ');
   }
 
-  async function handleAutoBuild() {
-    try {
-      await autoBuild();
-    } catch {
-      // error shown via hook
-    }
-  }
-
-  async function handleSave() {
-    if (!routine || routine.steps.length === 0) {
-      Alert.alert('No steps', 'Add products to your routine first.');
-      return;
-    }
-    try {
-      await save(routine.steps);
-      Alert.alert('Saved', `Your ${period} routine is saved.`);
-    } catch {
-      // error shown via hook
-    }
-  }
+  const doneCount = todaysProducts.filter((p) => doneToday.has(p.id)).length;
+  const total = todaysProducts.length;
+  const hasSpf =
+    period === 'AM' &&
+    total > 0 &&
+    !todaysProducts.some((p) => guessCategory(p.name, p.ingredients) === 'spf');
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + layout.screenPaddingTop }]}>
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + layout.modalScrollBottom }]}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: insets.bottom + layout.modalScrollBottom },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <Pressable onPress={() => navigation.goBack()} style={styles.close}>
           <Text style={styles.closeText}>✕</Text>
         </Pressable>
 
-        <SectionLabel label="Routine builder" />
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>Your {period} routine</Text>
-          <Pressable
-            style={[styles.autoBuild, saving && styles.disabled]}
-            onPress={handleAutoBuild}
-            disabled={saving}
-          >
-            <Text style={styles.autoBuildIcon}>✦</Text>
-            <Text style={styles.autoBuildText}>Auto-build</Text>
-          </Pressable>
-        </View>
+        <SectionLabel label={`${todayName}'s routine`} />
+        <Text style={styles.title}>Today's checklist</Text>
 
         <View style={styles.toggle}>
           <Pressable
@@ -139,80 +172,62 @@ export function RoutineScreen() {
           </Pressable>
         </View>
 
-        {showSpfAlert && (
+        {hasSpf ? (
           <View style={styles.alert}>
             <Text style={styles.alertIcon}>⚠</Text>
             <Text style={styles.alertText}>
-              Add SPF — your morning routine isn't complete without it.
+              No SPF scheduled this morning — add one to protect your skin.
+            </Text>
+          </View>
+        ) : null}
+
+        {total > 0 ? (
+          <>
+            <View style={styles.stepsHeader}>
+              <SectionLabel label={period === 'AM' ? 'Morning' : 'Evening'} />
+              <Text style={styles.checklistCount}>
+                {doneCount}/{total} done
+              </Text>
+            </View>
+            {todaysProducts.map((product) => {
+              const checked = doneToday.has(product.id);
+              return (
+                <Pressable
+                  key={product.id}
+                  style={styles.stepRow}
+                  onPress={() => toggleDone(product.id)}
+                >
+                  <View style={[styles.checkbox, checked && styles.checkboxOn]}>
+                    {checked ? <Text style={styles.checkboxTick}>✓</Text> : null}
+                  </View>
+                  {product.image_url ? (
+                    <Image
+                      source={{ uri: product.image_url }}
+                      style={styles.stepThumb}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                    <View style={[styles.stepThumb, styles.stepThumbPlaceholder]} />
+                  )}
+                  <View style={styles.stepInfo}>
+                    <Text style={[styles.stepName, checked && styles.stepNameDone]}>
+                      {product.name}
+                    </Text>
+                    <Text style={styles.stepReason}>{usageLine(product)}</Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </>
+        ) : (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>Nothing scheduled</Text>
+            <Text style={styles.empty}>
+              No products set for this {period === 'AM' ? 'morning' : 'evening'}. Add
+              products from your shelf and pick the days you use them.
             </Text>
           </View>
         )}
-
-        {routine && routine.steps.length > 0 && (
-          <View style={styles.stepsSection}>
-            <SectionLabel label="Your steps" />
-            {routine.steps.map((step) => (
-              <View key={step.product_id} style={styles.stepRow}>
-                <Text style={styles.stepOrder}>{step.order}</Text>
-                <View style={styles.stepInfo}>
-                  <Text style={styles.stepName}>{step.product_name}</Text>
-                  <Text style={styles.stepReason}>{step.reason}</Text>
-                </View>
-              </View>
-            ))}
-          </View>
-        )}
-
-        <SectionLabel label="Add from your shelf" />
-
-        {loading || shelfLoading ? (
-          <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.section }} />
-        ) : (
-          products.map((product) => {
-            const category = guessCategory(product.name, product.ingredients);
-            const letter = (product.brand ?? product.name).charAt(0).toUpperCase();
-            const inRoutine = selectedIds.has(product.id);
-
-            return (
-              <Pressable
-                key={product.id}
-                style={styles.productRow}
-                onPress={() => toggleProduct(product.id)}
-              >
-                <View style={[styles.avatar, { backgroundColor: getCategoryColor(category) }]}>
-                  <Text style={styles.avatarText}>{letter}</Text>
-                </View>
-                <View style={styles.productInfo}>
-                  <Text style={styles.category}>{getCategoryLabel(category)}</Text>
-                  <Text style={styles.productName}>{product.name}</Text>
-                </View>
-                <View style={[styles.addBtn, inRoutine && styles.addBtnActive]}>
-                  <Text style={[styles.addBtnText, inRoutine && styles.addBtnTextActive]}>
-                    {inRoutine ? '✓' : '+'}
-                  </Text>
-                </View>
-              </Pressable>
-            );
-          })
-        )}
-
-        {products.length === 0 && !shelfLoading && (
-          <Text style={styles.empty}>Add products to your shelf first.</Text>
-        )}
-
-        {error && <Text style={styles.error}>{error}</Text>}
-
-        <Pressable
-          style={[styles.saveBtn, saving && styles.disabled]}
-          onPress={handleSave}
-          disabled={saving}
-        >
-          {saving ? (
-            <ActivityIndicator color={colors.surface} />
-          ) : (
-            <Text style={styles.saveBtnText}>Save {period} routine</Text>
-          )}
-        </Pressable>
       </ScrollView>
     </View>
   );
@@ -234,42 +249,15 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: colors.textMuted,
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.item,
-  },
   title: {
     ...type.screenTitle,
-    flex: 1,
-  },
-  autoBuild: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: colors.dark,
-    paddingHorizontal: 14,
-    paddingVertical: spacing.item,
-    borderRadius: radii.full,
-  },
-  autoBuildIcon: {
-    fontSize: 12,
-    color: colors.surface,
-  },
-  autoBuildText: {
-    ...font.semibold,
-    fontSize: 13,
-    color: colors.surface,
-  },
-  disabled: {
-    opacity: 0.6,
   },
   toggle: {
     flexDirection: 'row',
     ...cardChrome,
     borderRadius: radii.full,
     padding: spacing.inner / 2,
+    marginTop: spacing.inner,
   },
   toggleBtn: {
     flex: 1,
@@ -295,6 +283,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent.peach,
     borderRadius: radii.md,
     padding: 14,
+    marginTop: spacing.inner,
   },
   alertIcon: {
     fontSize: 16,
@@ -304,21 +293,54 @@ const styles = StyleSheet.create({
     ...type.bodySmall,
     color: colors.text,
   },
-  stepsSection: {
-    gap: spacing.inner,
+  stepsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.inner,
+  },
+  checklistCount: {
+    ...font.semibold,
+    fontSize: 12,
+    color: colors.textSecondary,
   },
   stepRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: spacing.item,
     ...cardChrome,
     borderRadius: radii.sm,
-    padding: 14,
+    padding: 12,
+    marginTop: 8,
   },
-  stepOrder: {
+  stepThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceMuted,
+  },
+  stepThumbPlaceholder: {
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxOn: {
+    backgroundColor: colors.dark,
+    borderColor: colors.dark,
+  },
+  checkboxTick: {
     ...font.semibold,
-    fontSize: 14,
-    color: colors.primary,
-    width: 20,
+    fontSize: 13,
+    color: colors.surface,
+    lineHeight: 15,
   },
   stepInfo: {
     flex: 1,
@@ -328,81 +350,29 @@ const styles = StyleSheet.create({
     ...type.cardTitle,
     fontSize: 14,
   },
+  stepNameDone: {
+    color: colors.textMuted,
+    textDecorationLine: 'line-through',
+  },
   stepReason: {
     ...type.caption,
     fontSize: 12,
   },
-  productRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.item,
+  emptyCard: {
     ...cardChrome,
     borderRadius: radii.md,
-    padding: 16,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    padding: spacing.screen,
+    gap: 6,
+    marginTop: spacing.section,
     alignItems: 'center',
-    justifyContent: 'center',
   },
-  avatarText: {
+  emptyTitle: {
     ...font.semibold,
-    fontSize: 15,
+    fontSize: 16,
     color: colors.text,
-  },
-  productInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  category: {
-    ...type.statLabel,
-    fontSize: 10,
-  },
-  productName: {
-    ...type.cardTitle,
-  },
-  addBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  addBtnActive: {
-    backgroundColor: colors.dark,
-    borderColor: colors.dark,
-  },
-  addBtnText: {
-    fontSize: 18,
-    color: colors.textMuted,
-    lineHeight: 20,
-  },
-  addBtnTextActive: {
-    color: colors.surface,
-    fontSize: 14,
   },
   empty: {
     ...type.bodySmall,
     textAlign: 'center',
-    marginTop: spacing.screen,
-  },
-  error: {
-    ...type.bodySmall,
-    color: colors.error,
-    textAlign: 'center',
-  },
-  saveBtn: {
-    backgroundColor: colors.dark,
-    borderRadius: radii.full,
-    paddingVertical: 18,
-    alignItems: 'center',
-    marginTop: spacing.inner,
-  },
-  saveBtnText: {
-    ...type.button,
   },
 });

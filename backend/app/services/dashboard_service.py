@@ -28,7 +28,7 @@ PIPELINE_METRIC_LABELS = {
     "oil_balance": "Oil balance",
     "clarity": "Clarity",
     "calmness": "Calmness",
-    "smoothness": "Smoothness",
+    "smoothness": "Texture",
     "fine_lines": "Fine lines",
 }
 

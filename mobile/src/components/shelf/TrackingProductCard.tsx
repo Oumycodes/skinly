@@ -4,7 +4,6 @@ import { cardChrome } from '../../constants/cards';
 import { colors, radii } from '../../constants/colors';
 import { spacing } from '../../constants/spacing';
 import { font, type } from '../../constants/typography';
-import type { UsageTime } from '../../services/products';
 import { shortenProductName } from '../../utils/productName';
 import { guessCategory } from '../../utils/productCategory';
 import {
@@ -26,12 +25,6 @@ const STATUS_STYLE: Record<TrackingStatus, { bg: string; color: string }> = {
   check_this: { bg: '#FCE8E8', color: '#B04A4A' },
 };
 
-const USAGE_LABEL: Record<UsageTime, string> = {
-  morning: 'Morning',
-  night: 'Night',
-  both: 'AM · PM',
-};
-
 export function TrackingProductCard({
   tracking,
   onPress,
@@ -41,8 +34,6 @@ export function TrackingProductCard({
   const statusStyle = STATUS_STYLE[tracking.status];
   const imageUrl = tracking.product.image_url;
   const isTracking = tracking.product.tracking_enabled !== false;
-  const usageTime = tracking.product.usage_time;
-  const timesPerWeek = tracking.product.times_per_week;
 
   return (
     <Pressable style={styles.card} onPress={onPress}>
@@ -64,20 +55,6 @@ export function TrackingProductCard({
               ? `Day ${tracking.day} of ${tracking.trialDays}`
               : tracking.product.brand || 'On shelf'}
           </Text>
-          {usageTime || timesPerWeek ? (
-            <View style={styles.usageRow}>
-              {usageTime ? (
-                <View style={styles.usageBadge}>
-                  <Text style={styles.usageBadgeText}>{USAGE_LABEL[usageTime]}</Text>
-                </View>
-              ) : null}
-              {timesPerWeek ? (
-                <View style={styles.usageBadge}>
-                  <Text style={styles.usageBadgeText}>{timesPerWeek}× / week</Text>
-                </View>
-              ) : null}
-            </View>
-          ) : null}
         </View>
 
         <View style={styles.rightCol}>
@@ -154,23 +131,6 @@ const styles = StyleSheet.create({
   },
   meta: {
     ...type.bodySmall,
-    color: colors.textSecondary,
-  },
-  usageRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 6,
-  },
-  usageBadge: {
-    backgroundColor: colors.surfaceMuted,
-    borderRadius: radii.pill,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  usageBadgeText: {
-    ...font.medium,
-    fontSize: 11,
     color: colors.textSecondary,
   },
   rightCol: {

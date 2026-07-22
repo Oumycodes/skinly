@@ -21,10 +21,13 @@ import { useDashboard } from '../hooks/useDashboard';
 import type { RootStackParamList } from '../navigation/types';
 import {
   dashboardImages,
-  getScanHistoryDetail,
   scanDetailImages,
   type ScanDetail,
 } from '../services/dashboard';
+import {
+  getCachedScanHistory,
+  loadScanHistory,
+} from '../services/scanHistoryCache';
 import { withSampleScanScores } from '../utils/sampleProgressScores';
 
 export function ProgressScreen() {
@@ -32,19 +35,22 @@ export function ProgressScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { data: dashboard, refresh: refreshDashboard } = useDashboard();
   const [selectedDate, setSelectedDate] = useState(() => new Date());
-  const [history, setHistory] = useState<ScanDetail[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [history, setHistory] = useState<ScanDetail[]>(
+    () => getCachedScanHistory() ?? [],
+  );
+  // Only block with a spinner on a true cold start (no cached history)
+  const [loading, setLoading] = useState(() => getCachedScanHistory() == null);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
+    if (getCachedScanHistory() == null) setLoading(true);
     try {
       const [details] = await Promise.all([
-        getScanHistoryDetail(90),
+        loadScanHistory(90),
         refreshDashboard(),
       ]);
       setHistory(details);
     } catch {
-      setHistory([]);
+      if (getCachedScanHistory() == null) setHistory([]);
     } finally {
       setLoading(false);
     }
