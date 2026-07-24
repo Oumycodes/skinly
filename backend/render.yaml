@@ -1,0 +1,35 @@
+# Render blueprint for the Skinly backend.
+# Deploy: push to GitHub, then in Render → New → Blueprint, point at this repo.
+# Secrets (sync:false) are entered once in the Render dashboard, never committed.
+services:
+  - type: web
+    name: skinly-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    rootDir: backend
+    plan: starter        # 512MB may OOM with mediapipe; bump to "standard" if it crashes
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-flash-latest
+      - key: RAPIDAPI_KEY
+        sync: false
+      - key: REMOVEBG_API_KEY
+        sync: false
+      - key: UPCITEMDB_API_KEY
+        sync: false
+      - key: USE_MOCK_AI
+        value: "0"
+      - key: FREE_SCAN_LIMIT
+        value: "0"
