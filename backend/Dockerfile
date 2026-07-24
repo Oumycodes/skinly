@@ -6,8 +6,13 @@ FROM python:3.12-slim
 # Native libraries required by opencv-python-headless and mediapipe
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgl1 \
+        libgles2 \
+        libegl1 \
         libglib2.0-0 \
         libgomp1 \
+        libsm6 \
+        libxext6 \
+        libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONUNBUFFERED=1 \
